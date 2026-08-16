@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Egg / Pet Body base -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 C40,28 32,44 32,60 C32,74 42,82 54,82 C66,82 76,74 76,60 C76,44 68,28 54,28 Z" />
+    <!-- Cute Ears -->
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M38,34 C34,22 42,20 45,28 Z" />
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M70,34 C74,22 66,20 63,28 Z" />
+    <!-- Cute inner cheeks -->
+    <path
+        android:fillColor="#F472B6"
+        android:pathData="M38,62m-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0" />
+    <path
+        android:fillColor="#F472B6"
+        android:pathData="M70,62m-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0" />
+    <!-- Eyes -->
+    <path
+        android:fillColor="#1E1B4B"
+        android:pathData="M44,54m-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M43,52.5m-1.2,0a1.2,1.2 0 1,0 2.4,0a1.2,1.2 0 1,0 -2.4,0" />
+    <path
+        android:fillColor="#1E1B4B"
+        android:pathData="M64,54m-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M63,52.5m-1.2,0a1.2,1.2 0 1,0 2.4,0a1.2,1.2 0 1,0 -2.4,0" />
+    <!-- Tiny Smile Mouth -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#1E1B4B"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M50,60 Q54,64 58,60" />
+    <!-- Sparkles -->
+    <path
+        android:fillColor="#FACC15"
+        android:pathData="M76,36 L78,40 L82,42 L78,44 L76,48 L74,44 L70,42 L74,40 Z" />
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M30,44 L31.5,47 L34.5,48.5 L31.5,50 L30,53 L28.5,50 L25.5,48.5 L28.5,47 Z" />
+</vector>

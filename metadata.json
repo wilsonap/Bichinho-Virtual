@@ -1,0 +1,6 @@
+{
+  "name": "Bichinho Virtual",
+  "description": "Jogo de bichinho virtual com espécies aleatórias, evolução, minijogos, loja, missões e conquistas offline com Room Database.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

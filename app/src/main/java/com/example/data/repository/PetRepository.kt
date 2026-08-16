@@ -1,0 +1,743 @@
+package com.example.data.repository
+
+import android.util.Log
+import com.example.data.local.*
+import com.example.data.model.*
+import kotlinx.coroutines.flow.Flow
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.max
+import kotlin.math.min
+
+class PetRepository(private val dao: PetDao) {
+
+    val petFlow: Flow<PetEntity?> = dao.getPetFlow()
+    val playerFlow: Flow<PlayerEntity?> = dao.getPlayerFlow()
+    val inventoryFlow: Flow<List<InventoryEntity>> = dao.getInventoryFlow()
+    val dailyMissionsFlow: Flow<List<DailyMissionEntity>> = dao.getDailyMissionsFlow()
+    val achievementsFlow: Flow<List<AchievementEntity>> = dao.getAchievementsFlow()
+    val gameStatsFlow: Flow<GameStatsEntity?> = dao.getGameStatsFlow()
+
+    suspend fun getPet(): PetEntity? = dao.getPet()
+
+    private fun getCurrentDateString(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    }
+
+    suspend fun initializeGameIfNeeded() {
+        // 1. Check Player
+        var player = dao.getPlayer()
+        val today = getCurrentDateString()
+        if (player == null) {
+            player = PlayerEntity(
+                id = 1,
+                coins = 80,
+                currentStreak = 1,
+                bestStreak = 1,
+                lastLoginDate = today
+            )
+            dao.insertOrUpdatePlayer(player)
+        } else {
+            // Update daily streak
+            if (player.lastLoginDate != today) {
+                val yesterday = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(System.currentTimeMillis() - 86400000L))
+                val newStreak = if (player.lastLoginDate == yesterday) player.currentStreak + 1 else 1
+                val best = max(player.bestStreak, newStreak)
+                dao.insertOrUpdatePlayer(player.copy(currentStreak = newStreak, bestStreak = best, lastLoginDate = today))
+
+                // Progress streak achievements
+                updateAchievementProgress("ach_streak_7", newStreak)
+                updateAchievementProgress("ach_streak_30", newStreak)
+            }
+        }
+
+        // 2. Check Pet (Single Pet Rule)
+        var pet = dao.getPet()
+        if (pet == null) {
+            pet = PetEntity(
+                id = 1,
+                name = "",
+                speciesId = "",
+                rarity = Rarity.COMUM.name,
+                stage = PetStage.OVO.name,
+                hunger = 100,
+                energy = 100,
+                happiness = 100,
+                hygiene = 100,
+                health = 100,
+                exp = 0,
+                totalExp = 0,
+                level = 1,
+                birthTimestamp = System.currentTimeMillis(),
+                eggWarmProgress = 0,
+                isHatched = false,
+                isSleeping = false,
+                roomTheme = "decor_bedroom",
+                lastUpdateTimestamp = System.currentTimeMillis()
+            )
+            dao.insertOrUpdatePet(pet)
+        } else {
+            // Simulate offline stat changes
+            updateOfflineStats(pet)
+        }
+
+        // 3. Seed Initial Inventory if empty
+        val currentInv = dao.getInventoryItem("food_apple")
+        if (currentInv == null) {
+            dao.insertInventoryItem(InventoryEntity(itemId = "food_apple", category = ItemCategory.ALIMENTO.name, name = "Maçã Fresca", quantity = 3))
+            dao.insertInventoryItem(InventoryEntity(itemId = "food_cookie", category = ItemCategory.ALIMENTO.name, name = "Biscoito Doce", quantity = 2))
+            dao.insertInventoryItem(InventoryEntity(itemId = "toy_ball", category = ItemCategory.BRINQUEDO.name, name = "Bola Saltitante", quantity = 1))
+            dao.insertInventoryItem(InventoryEntity(itemId = "decor_bedroom", category = ItemCategory.DECORACAO.name, name = "Quarto Aconchegante", quantity = 1, isEquipped = true))
+        }
+
+        // 4. Seed Achievements
+        seedAchievementsIfNeeded()
+
+        // 5. Seed Daily Missions for Today
+        seedDailyMissionsIfNeeded(today)
+
+        // 6. Check Game Stats
+        var stats = dao.getGameStats()
+        if (stats == null) {
+            stats = GameStatsEntity(id = 1)
+            dao.insertOrUpdateGameStats(stats)
+        }
+    }
+
+    suspend fun updateOfflineStats(pet: PetEntity): Boolean {
+        if (!pet.isHatched) return false
+
+        val now = System.currentTimeMillis()
+        val simulated = com.example.notification.PetStatsCalculator.calculateSimulatedStats(pet, now)
+        if (simulated.elapsedMinutes <= 0) return false
+
+        val updatedPet = pet.copy(
+            hunger = simulated.hunger,
+            energy = simulated.energy,
+            happiness = simulated.happiness,
+            hygiene = simulated.hygiene,
+            health = simulated.health,
+            isSleeping = simulated.isSleeping,
+            lastUpdateTimestamp = now
+        )
+        dao.insertOrUpdatePet(updatedPet)
+        return simulated.wasLonging
+    }
+
+    suspend fun tickLiveStats(): PetEntity? {
+        val pet = dao.getPet() ?: return null
+        if (!pet.isHatched) return pet
+
+        val now = System.currentTimeMillis()
+        var hunger = pet.hunger
+        var energy = pet.energy
+        var happiness = pet.happiness
+        var hygiene = pet.hygiene
+        var health = pet.health
+        var isSleeping = pet.isSleeping
+        val isNight = com.example.notification.PetStatsCalculator.isNightTime(now)
+
+        if (isNight) {
+            // --- NIGHTTIME (22:00 to 08:00): Protected Rest Period ---
+            isSleeping = true // Pet is in night sleep
+            energy = min(100, energy + 2) // Reaches up to 100 and stays sleeping!
+
+            // Slow hunger decay, zero health damage during night
+            if (hunger > 0 && Math.random() < 0.2) {
+                hunger = max(0, hunger - 1)
+            }
+            // Hygiene and happiness protected from decay
+            // Health protected: no damage from hunger or hygiene during night
+        } else {
+            // --- DAYTIME (08:00 to 22:00): Active / Nap Period ---
+            if (isSleeping) {
+                // Daytime Nap / Exhaustion sleep
+                energy = min(100, energy + 2)
+                if (energy >= 100) {
+                    isSleeping = false
+                    Log.d("SLEEP_AUDIT", "Auto-awakening pet in daytime live tick: energy reached 100%")
+                }
+            } else {
+                // Active daytime decay
+                if (hunger > 0) hunger = max(0, hunger - 1)
+                if (energy > 0) energy = max(0, energy - 1)
+                if (hygiene > 0) hygiene = max(0, hygiene - 1)
+                if (happiness > 0) happiness = max(0, happiness - 1)
+
+                // Daytime exhaustion sleep: auto-sleep if energy <= 5
+                if (energy <= 5) {
+                    isSleeping = true
+                    Log.d("SLEEP_AUDIT", "Auto-sleeping pet: daytime energy dropped to <= 5%")
+                }
+            }
+
+            // Daytime health damage if starving or dirty
+            if (hunger < 15 || hygiene < 15) {
+                health = max(10, health - 1)
+            }
+        }
+
+        val updated = pet.copy(
+            hunger = hunger,
+            energy = energy,
+            happiness = happiness,
+            hygiene = hygiene,
+            health = health,
+            isSleeping = isSleeping,
+            lastUpdateTimestamp = now
+        )
+        dao.insertOrUpdatePet(updated)
+        return updated
+    }
+
+    private suspend fun seedAchievementsIfNeeded() {
+        val existing = dao.getAchievement("ach_bath_1")
+        if (existing == null) {
+            val achievements = listOf(
+                AchievementEntity("ach_bath_1", "Primeiro Banho", "Dê o primeiro banho com sabão e bolhas", 30, 0, 1),
+                AchievementEntity("ach_toy_1", "Primeiro Brinquedo", "Compre ou brinque com seu primeiro brinquedo", 40, 0, 1),
+                AchievementEntity("ach_evolve_1", "Primeira Evolução", "Evolua o bichinho de filhote para jovem", 100, 0, 1),
+                AchievementEntity("ach_adult", "Fase Adulta", "Crie o bichinho até atingir a fase adulta majestosa", 150, 0, 1),
+                AchievementEntity("ach_streak_7", "Sete Dias Consecutivos", "Cuide do seu bichinho por 7 dias seguidos", 200, 0, 7),
+                AchievementEntity("ach_streak_30", "Trinta Dias Consecutivos", "Cuide do seu bichinho por 30 dias seguidos", 500, 0, 30),
+                AchievementEntity("ach_minigames_10", "Mestre dos Jogos", "Jogue 10 partidas de minijogos", 80, 0, 10),
+                AchievementEntity("ach_shop_5", "Colecionador Fiel", "Compre 5 itens diferentes na loja", 120, 0, 5),
+                AchievementEntity("ach_legendary", "Espécie Lendária", "Chocou uma espécie lendária (Dragão ou Fênix)", 250, 0, 1)
+            )
+            dao.insertAchievements(achievements)
+        }
+    }
+
+    private suspend fun seedDailyMissionsIfNeeded(today: String) {
+        val existing = dao.getDailyMission("miss_feed_$today")
+        if (existing == null) {
+            dao.clearDailyMissions()
+            val missions = listOf(
+                DailyMissionEntity("miss_feed_$today", "Alimentar o Bichinho", "Alimente seu companheiro 3 vezes com comidinhas gostosas", 3, 0, 30, 20, missionDate = today),
+                DailyMissionEntity("miss_bath_$today", "Hora da Higiene", "Dê pelo menos 1 banho caprichado", 1, 0, 25, 15, missionDate = today),
+                DailyMissionEntity("miss_play_$today", "Diversão Garantida", "Brinque em 2 partidas de minijogos", 2, 0, 40, 25, missionDate = today),
+                DailyMissionEntity("miss_coins_$today", "Cofre Recheado", "Ganhe 40 moedas em minijogos", 40, 0, 35, 20, missionDate = today)
+            )
+            dao.insertDailyMissions(missions)
+        }
+    }
+
+    suspend fun warmEgg(amount: Int = 10): PetEntity? {
+        val pet = dao.getPet() ?: return null
+        if (pet.isHatched) return pet
+        val newProgress = min(100, pet.eggWarmProgress + amount)
+        val updated = pet.copy(eggWarmProgress = newProgress)
+        dao.insertOrUpdatePet(updated)
+        return updated
+    }
+
+    suspend fun hatchEgg(petName: String, specificSpecies: Species? = null): Pair<PetEntity, Species> {
+        val pet = dao.getPet() ?: throw IllegalStateException("Pet not found")
+        val chosenSpecies = specificSpecies ?: Species.getRandomSpecies()
+        val nameToUse = petName.ifBlank { pet.name.ifBlank { "Pipoca" } }
+
+        val hatchedPet = pet.copy(
+            name = nameToUse,
+            speciesId = chosenSpecies.id,
+            rarity = chosenSpecies.rarity.name,
+            stage = PetStage.FILHOTE.name,
+            hunger = 90,
+            energy = 100,
+            happiness = 100,
+            hygiene = 90,
+            health = 100,
+            exp = 0,
+            totalExp = 0,
+            level = 1,
+            eggWarmProgress = 100,
+            isHatched = true,
+            isSleeping = false,
+            lastUpdateTimestamp = System.currentTimeMillis()
+        )
+        dao.insertOrUpdatePet(hatchedPet)
+
+        if (chosenSpecies.rarity == Rarity.LENDARIA) {
+            updateAchievementProgress("ach_legendary", 1)
+        }
+
+        return Pair(hatchedPet, chosenSpecies)
+    }
+
+    suspend fun setPetSpeciesAndStage(species: Species, stage: PetStage) {
+        val pet = dao.getPet() ?: return
+        val updated = pet.copy(
+            speciesId = species.id,
+            rarity = species.rarity.name,
+            stage = stage.name,
+            isHatched = stage != PetStage.OVO,
+            lastUpdateTimestamp = System.currentTimeMillis()
+        )
+        dao.insertOrUpdatePet(updated)
+    }
+
+    suspend fun setPetName(name: String) {
+        val pet = dao.getPet() ?: return
+        dao.insertOrUpdatePet(pet.copy(name = name.trim()))
+    }
+
+    suspend fun feedPet(shopItem: ShopItem?): Boolean {
+        val pet = dao.getPet() ?: return false
+        if (!pet.isHatched) return false
+
+        // Guard: Reject non-food items if a specific shop item was passed
+        if (shopItem != null && shopItem.category != ItemCategory.ALIMENTO) {
+            Log.w("ITEM_AUDIT", "itemId=${shopItem.id}, itemName=${shopItem.name}, itemType=${shopItem.category.name}, action=FEED, result=REJECTED_WRONG_CATEGORY")
+            return false
+        }
+
+        val hungerGain = shopItem?.hungerBoost ?: 25
+        val healthGain = shopItem?.healthBoost ?: 5
+        val energyGain = shopItem?.energyBoost ?: 5
+        val happinessGain = shopItem?.happinessBoost ?: 10
+        val expGain = shopItem?.expBoost ?: 10
+
+        // Consume item from inventory if specific item passed
+        if (shopItem != null) {
+            val inv = dao.getInventoryItem(shopItem.id)
+            if (inv != null && inv.quantity > 0) {
+                if (inv.quantity == 1) {
+                    dao.deleteInventoryItem(inv.id)
+                } else {
+                    dao.updateInventoryItem(inv.copy(quantity = inv.quantity - 1))
+                }
+            } else {
+                Log.d("ITEM_AUDIT", "itemId=${shopItem.id}, itemName=${shopItem.name}, itemType=FOOD, action=FEED, result=NOT_IN_INVENTORY")
+                return false // item not in inventory
+            }
+        }
+
+        applyPetCare(
+            hungerDelta = hungerGain,
+            energyDelta = energyGain,
+            happinessDelta = happinessGain,
+            hygieneDelta = -2,
+            healthDelta = healthGain,
+            expDelta = expGain
+        )
+
+        // Increment stats & daily missions
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        dao.insertOrUpdateGameStats(stats.copy(timesFed = stats.timesFed + 1))
+        incrementDailyMission("miss_feed_${getCurrentDateString()}", 1)
+
+        Log.d(
+            "ITEM_AUDIT",
+            "itemId=${shopItem?.id ?: "snack"}, itemName=${shopItem?.name ?: "Ração Básica"}, itemType=FOOD, action=FEED, result=SUCCESS(hunger+$hungerGain, exp+$expGain, consumed=${shopItem != null})"
+        )
+
+        return true
+    }
+
+    suspend fun bathePet() {
+        val pet = dao.getPet() ?: return
+        if (!pet.isHatched) return
+
+        applyPetCare(
+            hungerDelta = -2,
+            energyDelta = -5,
+            happinessDelta = 20,
+            hygieneDelta = 60,
+            healthDelta = 10,
+            expDelta = 15
+        )
+
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        dao.insertOrUpdateGameStats(stats.copy(timesBathed = stats.timesBathed + 1))
+        incrementDailyMission("miss_bath_${getCurrentDateString()}", 1)
+        updateAchievementProgress("ach_bath_1", 1)
+    }
+
+    suspend fun wakeUpPet(force: Boolean = false): Boolean {
+        val pet = dao.getPet() ?: return false
+        if (!pet.isHatched || !pet.isSleeping) return false
+
+        val now = System.currentTimeMillis()
+        if (com.example.notification.PetStatsCalculator.isNightTime(now) && !force) {
+            Log.d("SLEEP_AUDIT", "wakeUpPet: Rejected because pet is in protected night sleep (22:00-08:00)")
+            return false
+        }
+
+        val sleepDurationMinutes = ((now - pet.sleepStartTimestamp) / (1000 * 60)).toInt()
+        val energyRestored = min(60, max(20, sleepDurationMinutes * 2))
+        val updated = pet.copy(
+            isSleeping = false,
+            energy = min(100, pet.energy + energyRestored),
+            lastUpdateTimestamp = now
+        )
+        dao.insertOrUpdatePet(updated)
+        Log.d("SLEEP_AUDIT", "wakeUpPet: pet woke up with energy=${updated.energy}")
+        return true
+    }
+
+    suspend fun putPetToSleep(): Boolean {
+        val pet = dao.getPet() ?: return false
+        if (!pet.isHatched || pet.isSleeping) return false
+
+        val now = System.currentTimeMillis()
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        dao.insertOrUpdateGameStats(stats.copy(timesSlept = stats.timesSlept + 1))
+        val updated = pet.copy(
+            isSleeping = true,
+            sleepStartTimestamp = now,
+            lastUpdateTimestamp = now
+        )
+        dao.insertOrUpdatePet(updated)
+        Log.d("SLEEP_AUDIT", "putPetToSleep: pet went to sleep with energy=${pet.energy}")
+        return true
+    }
+
+    suspend fun toggleSleep(): Boolean {
+        val pet = dao.getPet() ?: return false
+        if (!pet.isHatched) return false
+        val now = System.currentTimeMillis()
+        if (com.example.notification.PetStatsCalculator.isNightTime(now)) {
+            // During protected night hours, pet stays sleeping
+            return true
+        }
+
+        return if (pet.isSleeping) {
+            wakeUpPet()
+            false
+        } else {
+            putPetToSleep()
+            true
+        }
+    }
+
+    suspend fun playWithPet(toyItem: ShopItem? = null): Boolean {
+        val pet = dao.getPet() ?: return false
+        if (!pet.isHatched) return false
+
+        // Guard: If a specific item is passed, verify it is BRINQUEDO
+        if (toyItem != null && toyItem.category != ItemCategory.BRINQUEDO) {
+            Log.w("ITEM_AUDIT", "itemId=${toyItem.id}, itemName=${toyItem.name}, itemType=${toyItem.category.name}, action=PLAY, result=REJECTED_WRONG_CATEGORY")
+            return false
+        }
+
+        val happyGain = toyItem?.happinessBoost ?: 25
+        val expGain = toyItem?.expBoost ?: 15
+        val hygieneGain = toyItem?.hygieneBoost ?: 0
+        val energyGain = toyItem?.energyBoost ?: 0
+
+        // Important: Toys are REUSABLE. We DO NOT decrement quantity or delete item from inventory.
+        // Important: hungerDelta = 0. Toys NEVER alter hunger!
+        applyPetCare(
+            hungerDelta = 0,
+            energyDelta = if (energyGain > 0) energyGain else -5,
+            happinessDelta = happyGain,
+            hygieneDelta = hygieneGain,
+            healthDelta = 0,
+            expDelta = expGain
+        )
+
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        dao.insertOrUpdateGameStats(stats.copy(timesPlayed = stats.timesPlayed + 1))
+        updateAchievementProgress("ach_toy_1", 1)
+
+        Log.d(
+            "ITEM_AUDIT",
+            "itemId=${toyItem?.id ?: "default_toy"}, itemName=${toyItem?.name ?: "Brincadeira Simples"}, itemType=TOY, action=PLAY, result=SUCCESS(happiness+$happyGain, exp+$expGain, hungerDelta=0, consumed=false)"
+        )
+        return true
+    }
+
+    suspend fun useMedicine(medicineItem: ShopItem): Boolean {
+        val pet = dao.getPet() ?: return false
+        if (!pet.isHatched) return false
+
+        // Guard: Verify item is MEDICAMENTO
+        if (medicineItem.category != ItemCategory.MEDICAMENTO) {
+            Log.w("ITEM_AUDIT", "itemId=${medicineItem.id}, itemName=${medicineItem.name}, itemType=${medicineItem.category.name}, action=MEDICINE, result=REJECTED_WRONG_CATEGORY")
+            return false
+        }
+
+        val inv = dao.getInventoryItem(medicineItem.id) ?: dao.getInventoryItem("food_potion")
+        if (inv == null || inv.quantity <= 0) {
+            Log.d("ITEM_AUDIT", "itemId=${medicineItem.id}, itemName=${medicineItem.name}, itemType=MEDICINE, action=USE_MEDICINE, result=NOT_IN_INVENTORY")
+            return false
+        }
+
+        // Consume 1 unit of medicine
+        if (inv.quantity == 1) {
+            dao.deleteInventoryItem(inv.id)
+        } else {
+            dao.updateInventoryItem(inv.copy(quantity = inv.quantity - 1))
+        }
+
+        val healthGain = if (medicineItem.healthBoost > 0) medicineItem.healthBoost else 50
+        val energyGain = if (medicineItem.energyBoost > 0) medicineItem.energyBoost else 30
+        val expGain = if (medicineItem.expBoost > 0) medicineItem.expBoost else 15
+
+        // Medicines restore health and energy without modifying hunger
+        applyPetCare(
+            hungerDelta = 0,
+            energyDelta = energyGain,
+            happinessDelta = 15,
+            hygieneDelta = 0,
+            healthDelta = healthGain,
+            expDelta = expGain
+        )
+
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        dao.insertOrUpdateGameStats(stats.copy(timesDoctor = stats.timesDoctor + 1))
+
+        Log.d(
+            "ITEM_AUDIT",
+            "itemId=${medicineItem.id}, itemName=${medicineItem.name}, itemType=MEDICINE, action=USE_MEDICINE, result=SUCCESS(health+$healthGain, energy+$energyGain, hungerDelta=0, consumed=true)"
+        )
+        return true
+    }
+
+    suspend fun doctorCheckup() {
+        val pet = dao.getPet() ?: return
+        if (!pet.isHatched) return
+
+        val updated = pet.copy(
+            health = 100,
+            happiness = min(100, pet.happiness + 20),
+            energy = min(100, pet.energy + 15),
+            lastUpdateTimestamp = System.currentTimeMillis()
+        )
+        dao.insertOrUpdatePet(updated)
+
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        dao.insertOrUpdateGameStats(stats.copy(timesDoctor = stats.timesDoctor + 1))
+    }
+
+    private suspend fun applyPetCare(
+        hungerDelta: Int,
+        energyDelta: Int,
+        happinessDelta: Int,
+        hygieneDelta: Int,
+        healthDelta: Int,
+        expDelta: Int
+    ) {
+        val pet = dao.getPet() ?: return
+
+        val newHunger = min(100, max(0, pet.hunger + hungerDelta))
+        val newEnergy = min(100, max(0, pet.energy + energyDelta))
+        val newHappiness = min(100, max(0, pet.happiness + happinessDelta))
+        val newHygiene = min(100, max(0, pet.hygiene + hygieneDelta))
+        val newHealth = min(100, max(0, pet.health + healthDelta))
+
+        val newTotalExp = pet.totalExp + expDelta
+        val newLevel = 1 + (newTotalExp / 60)
+        val expInStage = (newTotalExp % 100)
+
+        // Stage evolution progression
+        var currentStage = PetStage.valueOf(pet.stage)
+        var evolutionsCount = 0
+
+        if (currentStage == PetStage.FILHOTE && newTotalExp >= 150) {
+            currentStage = PetStage.JOVEM
+            evolutionsCount++
+            updateAchievementProgress("ach_evolve_1", 1)
+        }
+        if (currentStage == PetStage.JOVEM && newTotalExp >= 450) {
+            currentStage = PetStage.ADULTO
+            evolutionsCount++
+            updateAchievementProgress("ach_adult", 1)
+        }
+
+        if (evolutionsCount > 0) {
+            val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+            dao.insertOrUpdateGameStats(stats.copy(evolutionsCount = stats.evolutionsCount + evolutionsCount))
+        }
+
+        val updated = pet.copy(
+            hunger = newHunger,
+            energy = newEnergy,
+            happiness = newHappiness,
+            hygiene = newHygiene,
+            health = newHealth,
+            exp = expInStage,
+            totalExp = newTotalExp,
+            level = newLevel,
+            stage = currentStage.name,
+            lastUpdateTimestamp = System.currentTimeMillis()
+        )
+        dao.insertOrUpdatePet(updated)
+    }
+
+    suspend fun recordMinigameResult(gameType: String, score: Int, coinsEarned: Int) {
+        addCoins(coinsEarned)
+
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        val newMem = if (gameType == "memory") max(stats.memoryHighscore, score) else stats.memoryHighscore
+        val newRun = if (gameType == "runner") max(stats.runnerHighscore, score) else stats.runnerHighscore
+        val newCat = if (gameType == "catch") max(stats.catchHighscore, score) else stats.catchHighscore
+
+        dao.insertOrUpdateGameStats(
+            stats.copy(
+                minigamesPlayed = stats.minigamesPlayed + 1,
+                memoryHighscore = newMem,
+                runnerHighscore = newRun,
+                catchHighscore = newCat
+            )
+        )
+
+        val today = getCurrentDateString()
+        incrementDailyMission("miss_play_$today", 1)
+        incrementDailyMission("miss_coins_$today", coinsEarned)
+        updateAchievementProgress("ach_minigames_10", stats.minigamesPlayed + 1)
+
+        // Give pet happiness & exp for playing minigames
+        applyPetCare(
+            hungerDelta = -4,
+            energyDelta = -8,
+            happinessDelta = 25,
+            hygieneDelta = -3,
+            healthDelta = 5,
+            expDelta = 20
+        )
+    }
+
+    suspend fun addCoins(amount: Int) {
+        if (amount <= 0) return
+        val player = dao.getPlayer() ?: return
+        dao.insertOrUpdatePlayer(player.copy(coins = player.coins + amount))
+
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        dao.insertOrUpdateGameStats(stats.copy(totalCoinsEarned = stats.totalCoinsEarned + amount))
+    }
+
+    suspend fun buyItem(item: ShopItem, equipImmediately: Boolean = false): Boolean {
+        val player = dao.getPlayer() ?: return false
+        if (player.coins < item.price) return false
+
+        // Deduct coins
+        dao.insertOrUpdatePlayer(player.copy(coins = player.coins - item.price))
+
+        // Add to inventory
+        val existing = dao.getInventoryItem(item.id)
+        val targetEntity = if (existing != null) {
+            val updated = existing.copy(quantity = existing.quantity + 1)
+            dao.updateInventoryItem(updated)
+            updated
+        } else {
+            val newEntity = InventoryEntity(
+                itemId = item.id,
+                category = item.category.name,
+                name = item.name,
+                quantity = 1,
+                isEquipped = false
+            )
+            dao.insertInventoryItem(newEntity)
+            newEntity
+        }
+
+        val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+        val newItemsBought = stats.totalItemsBought + 1
+        dao.insertOrUpdateGameStats(stats.copy(totalItemsBought = newItemsBought))
+        updateAchievementProgress("ach_shop_5", newItemsBought)
+
+        Log.d(
+            "ITEM_AUDIT",
+            "itemId=${item.id}, itemName=${item.name}, itemType=${item.category.name}, action=BUY, result=SUCCESS(price=${item.price}, remainingCoins=${player.coins - item.price})"
+        )
+
+        if (equipImmediately && (item.category == ItemCategory.ROUPA || item.category == ItemCategory.ACESSORIO || item.category == ItemCategory.DECORACAO)) {
+            val freshItem = dao.getInventoryItem(item.id) ?: targetEntity
+            equipItem(freshItem)
+        }
+
+        return true
+    }
+
+    suspend fun equipItem(inventoryItem: InventoryEntity) {
+        val pet = dao.getPet() ?: return
+        when (inventoryItem.category) {
+            ItemCategory.ROUPA.name -> {
+                val isCurrentlyEquipped = pet.equippedHat == inventoryItem.itemId
+                val newHat = if (isCurrentlyEquipped) "" else inventoryItem.itemId
+                dao.insertOrUpdatePet(pet.copy(equippedHat = newHat))
+                dao.unequipCategory(ItemCategory.ROUPA.name)
+                if (!isCurrentlyEquipped) {
+                    dao.setItemEquipped(inventoryItem.itemId, true)
+                }
+            }
+            ItemCategory.ACESSORIO.name -> {
+                val isCurrentlyEquipped = pet.equippedAccessory == inventoryItem.itemId
+                val newAcc = if (isCurrentlyEquipped) "" else inventoryItem.itemId
+                dao.insertOrUpdatePet(pet.copy(equippedAccessory = newAcc))
+                dao.unequipCategory(ItemCategory.ACESSORIO.name)
+                if (!isCurrentlyEquipped) {
+                    dao.setItemEquipped(inventoryItem.itemId, true)
+                }
+            }
+            ItemCategory.DECORACAO.name -> {
+                val isCurrentlyEquipped = pet.roomTheme == inventoryItem.itemId
+                val newTheme = if (isCurrentlyEquipped) "decor_bedroom" else inventoryItem.itemId
+                dao.insertOrUpdatePet(pet.copy(roomTheme = newTheme))
+                dao.unequipCategory(ItemCategory.DECORACAO.name)
+                if (!isCurrentlyEquipped) {
+                    dao.setItemEquipped(inventoryItem.itemId, true)
+                }
+            }
+        }
+        Log.d(
+            "ITEM_AUDIT",
+            "itemId=${inventoryItem.itemId}, itemName=${inventoryItem.name}, itemType=${inventoryItem.category}, action=EQUIP, result=SUCCESS(isEquipped=${!inventoryItem.isEquipped})"
+        )
+    }
+
+    suspend fun equipItemById(itemId: String, categoryName: String) {
+        val inv = dao.getInventoryItem(itemId)
+        if (inv != null) {
+            equipItem(inv)
+        } else {
+            equipItem(InventoryEntity(itemId = itemId, category = categoryName, name = "", quantity = 1, isEquipped = false))
+        }
+    }
+
+    suspend fun claimDailyMission(missionId: String): Boolean {
+        val mission = dao.getDailyMission(missionId) ?: return false
+        if (!mission.isCompleted || mission.isClaimed) return false
+
+        dao.updateDailyMission(mission.copy(isClaimed = true))
+        addCoins(mission.rewardCoins)
+        applyPetCare(0, 0, 10, 0, 0, mission.rewardExp)
+        return true
+    }
+
+    suspend fun claimAchievement(achievementId: String): Boolean {
+        val achievement = dao.getAchievement(achievementId) ?: return false
+        if (!achievement.isUnlocked || achievement.isClaimed) return false
+
+        dao.updateAchievement(achievement.copy(isClaimed = true))
+        addCoins(achievement.rewardCoins)
+        applyPetCare(0, 0, 15, 0, 0, 30)
+        return true
+    }
+
+    private suspend fun incrementDailyMission(missionId: String, amount: Int) {
+        val mission = dao.getDailyMission(missionId) ?: return
+        val newCurrent = min(mission.targetCount, mission.currentCount + amount)
+        val isCompleted = newCurrent >= mission.targetCount
+        dao.updateDailyMission(mission.copy(currentCount = newCurrent, isCompleted = isCompleted))
+    }
+
+    private suspend fun updateAchievementProgress(achievementId: String, progress: Int) {
+        val achievement = dao.getAchievement(achievementId) ?: return
+        val newProg = min(achievement.maxProgress, max(achievement.currentProgress, progress))
+        val isUnlocked = newProg >= achievement.maxProgress
+        dao.updateAchievement(achievement.copy(currentProgress = newProg, isUnlocked = isUnlocked))
+    }
+
+    suspend fun resetPet() {
+        dao.clearPet()
+        dao.clearDailyMissions()
+        // Reset player stats
+        val player = dao.getPlayer()
+        if (player != null) {
+            dao.insertOrUpdatePlayer(player.copy(coins = 80))
+        }
+        initializeGameIfNeeded()
+    }
+}
