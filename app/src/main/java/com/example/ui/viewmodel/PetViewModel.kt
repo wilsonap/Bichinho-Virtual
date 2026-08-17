@@ -119,6 +119,7 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                 if (wasLonging) {
                     triggerLongingGreeting(pet)
                 }
+                repository.checkEvolution()
                 PetCareScheduler.scheduleNextCheck(application)
             }
         }

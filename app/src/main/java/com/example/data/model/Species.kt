@@ -7,11 +7,30 @@ enum class Rarity(val displayName: String, val colorHex: Long, val weight: Int) 
     LENDARIA("Lendária", 0xFFEAB308, 3)
 }
 
-enum class PetStage(val displayName: String, val requiredExp: Int, val scaleMultiplier: Float) {
-    OVO("Ovo", 0, 0.8f),
-    FILHOTE("Filhote", 100, 0.85f),
-    JOVEM("Jovem", 300, 1.0f),
-    ADULTO("Adulto", 650, 1.15f)
+enum class PetStage(
+    val displayName: String,
+    val minDaysAlive: Int,
+    val minLevel: Int,
+    val scaleMultiplier: Float,
+    val description: String
+) {
+    OVO("Ovo", 0, 1, 0.8f, "Aconchegado no ninho esperando para chocar"),
+    FILHOTE("Filhote", 0, 1, 0.85f, "Pequeno, curioso e cheio de energia"),
+    JOVEM("Jovem", 2, 5, 1.0f, "Ágil, brincalhão e aprendendo rápido"),
+    ADULTO("Adulto", 7, 12, 1.15f, "Forte, leal e em sua plenitude"),
+    IDOSO("Idoso", 30, 25, 1.15f, "Sábio, carinhoso e um companheiro para toda a vida");
+
+    fun nextStage(): PetStage? = when (this) {
+        OVO -> FILHOTE
+        FILHOTE -> JOVEM
+        JOVEM -> ADULTO
+        ADULTO -> IDOSO
+        IDOSO -> null
+    }
+
+    fun meetsRequirements(daysAlive: Int, level: Int): Boolean {
+        return daysAlive >= minDaysAlive && level >= minLevel
+    }
 }
 
 enum class Species(

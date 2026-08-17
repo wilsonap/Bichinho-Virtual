@@ -398,8 +398,19 @@ private fun DrawScope.drawHatchedPet(
         val secondaryColor = Color(species.secondaryColorHex)
         val outlineColor = Color(0xFF1E293B)
 
-        // 1. Rarity Aura (Epics & Legendaries)
-        if (species.rarity == Rarity.LENDARIA || species.rarity == Rarity.EPICA) {
+        // 1. Rarity Aura (Epics & Legendaries) or Elder Wisdom Aura
+        if (stage == PetStage.IDOSO) {
+            // Golden Aura of Wisdom & Ancient Bond for Senior Pets
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0x44F59E0B), Color(0x15FBBF24), Color.Transparent),
+                    center = Offset(centerX, centerY),
+                    radius = 100.dp.toPx()
+                ),
+                center = Offset(centerX, centerY),
+                radius = 100.dp.toPx()
+            )
+        } else if (species.rarity == Rarity.LENDARIA || species.rarity == Rarity.EPICA) {
             val auraColor = if (species.rarity == Rarity.LENDARIA) {
                 if (species == Species.FENIX) Color(0x66EF4444) else Color(0x66F59E0B)
             } else Color(0x559333EA)
@@ -586,7 +597,7 @@ private fun DrawScope.drawEarsAndHorns(
     when (species) {
         Species.GATO -> {
             // Pointy Cat Ears
-            val earH = if (stage == PetStage.ADULTO) 22.dp.toPx() else 18.dp.toPx()
+            val earH = if (stage == PetStage.ADULTO || stage == PetStage.IDOSO) 22.dp.toPx() else 18.dp.toPx()
             val leftEar = Path().apply {
                 moveTo(centerX - 28.dp.toPx(), earY + 12.dp.toPx())
                 lineTo(centerX - 35.dp.toPx(), earY - earH)
@@ -623,7 +634,7 @@ private fun DrawScope.drawEarsAndHorns(
 
         Species.CACHORRO -> {
             // Floppy Puppy Ears on sides of head
-            val earDrop = if (stage == PetStage.ADULTO) 36.dp.toPx() else 28.dp.toPx()
+            val earDrop = if (stage == PetStage.ADULTO || stage == PetStage.IDOSO) 36.dp.toPx() else 28.dp.toPx()
             drawOval(
                 color = primaryColor,
                 topLeft = Offset(centerX - 44.dp.toPx(), earY - 4.dp.toPx()),
@@ -653,7 +664,7 @@ private fun DrawScope.drawEarsAndHorns(
             val earHeight = when (stage) {
                 PetStage.FILHOTE -> 40.dp.toPx()
                 PetStage.JOVEM -> 52.dp.toPx()
-                PetStage.ADULTO -> 60.dp.toPx()
+                PetStage.ADULTO, PetStage.IDOSO -> 60.dp.toPx()
                 else -> 48.dp.toPx()
             }
             val earWidth = 16.dp.toPx()
@@ -806,10 +817,11 @@ private fun DrawScope.drawEarsAndHorns(
             val maneRadius = when (stage) {
                 PetStage.FILHOTE -> 44.dp.toPx()
                 PetStage.JOVEM -> 50.dp.toPx()
-                PetStage.ADULTO -> 56.dp.toPx()
+                PetStage.ADULTO, PetStage.IDOSO -> 56.dp.toPx()
                 else -> 48.dp.toPx()
             }
-            drawCircle(color = Color(0xFFD97706), radius = maneRadius, center = Offset(centerX, centerY - 6.dp.toPx()))
+            val maneColor = if (stage == PetStage.IDOSO) Color(0xFFB45309) else Color(0xFFD97706)
+            drawCircle(color = maneColor, radius = maneRadius, center = Offset(centerX, centerY - 6.dp.toPx()))
             drawCircle(color = outlineColor, radius = maneRadius, center = Offset(centerX, centerY - 6.dp.toPx()), style = Stroke(3.dp.toPx()))
 
             // Lion Ears on top of mane
@@ -844,7 +856,7 @@ private fun DrawScope.drawEarsAndHorns(
             val hornLength = when (stage) {
                 PetStage.FILHOTE -> 20.dp.toPx()
                 PetStage.JOVEM -> 28.dp.toPx()
-                PetStage.ADULTO -> 38.dp.toPx()
+                PetStage.ADULTO, PetStage.IDOSO -> 38.dp.toPx()
                 else -> 28.dp.toPx()
             }
             val leftHorn = Path().apply {
@@ -870,7 +882,7 @@ private fun DrawScope.drawEarsAndHorns(
             val crestHeight = when (stage) {
                 PetStage.FILHOTE -> 24.dp.toPx()
                 PetStage.JOVEM -> 34.dp.toPx()
-                PetStage.ADULTO -> 46.dp.toPx()
+                PetStage.ADULTO, PetStage.IDOSO -> 46.dp.toPx()
                 else -> 34.dp.toPx()
             }
             val crest = Path().apply {
@@ -909,7 +921,7 @@ private fun DrawScope.drawWingsAndTail(
     when (species) {
         Species.COELHO -> {
             // Cute Fluffy Round Cotton-Ball Tail (Pompom)
-            val pompomRadius = if (stage == PetStage.ADULTO) 15.dp.toPx() else 12.dp.toPx()
+            val pompomRadius = if (stage == PetStage.ADULTO || stage == PetStage.IDOSO) 15.dp.toPx() else 12.dp.toPx()
             drawCircle(Color.White, radius = pompomRadius, center = Offset(centerX + 34.dp.toPx(), centerY + 16.dp.toPx()))
             drawCircle(outlineColor, radius = pompomRadius, center = Offset(centerX + 34.dp.toPx(), centerY + 16.dp.toPx()), style = Stroke(2.5.dp.toPx()))
             drawCircle(Color(0xFFFCE7F3), radius = pompomRadius * 0.5f, center = Offset(centerX + 34.dp.toPx(), centerY + 16.dp.toPx()))
@@ -1043,7 +1055,7 @@ private fun DrawScope.drawWingsAndTail(
 
         Species.CORUJA -> {
             // Feathered Owl Wings
-            val wingSpan = if (stage == PetStage.ADULTO) 44.dp.toPx() else 36.dp.toPx()
+            val wingSpan = if (stage == PetStage.ADULTO || stage == PetStage.IDOSO) 44.dp.toPx() else 36.dp.toPx()
             rotate(flutterAngle * 1.2f, pivot = Offset(centerX - 35.dp.toPx(), centerY)) {
                 val leftWing = Path().apply {
                     moveTo(centerX - 28.dp.toPx(), centerY - 6.dp.toPx())
@@ -1066,7 +1078,7 @@ private fun DrawScope.drawWingsAndTail(
 
         Species.DRAGAO -> {
             // Majestic Bat-like Dragon Wings
-            val wingSpan = if (stage == PetStage.ADULTO) 52.dp.toPx() else 40.dp.toPx()
+            val wingSpan = if (stage == PetStage.ADULTO || stage == PetStage.IDOSO) 52.dp.toPx() else 40.dp.toPx()
             rotate(flutterAngle * 1.3f, pivot = Offset(centerX - 35.dp.toPx(), centerY)) {
                 val leftWing = Path().apply {
                     moveTo(centerX - 28.dp.toPx(), centerY - 10.dp.toPx())
@@ -1111,7 +1123,7 @@ private fun DrawScope.drawWingsAndTail(
 
         Species.FENIX -> {
             // Blazing Solar Fire Wings
-            val wingSpan = if (stage == PetStage.ADULTO) 52.dp.toPx() else 42.dp.toPx()
+            val wingSpan = if (stage == PetStage.ADULTO || stage == PetStage.IDOSO) 52.dp.toPx() else 42.dp.toPx()
             rotate(flutterAngle * 1.4f, pivot = Offset(centerX - 35.dp.toPx(), centerY)) {
                 val leftWing = Path().apply {
                     moveTo(centerX - 28.dp.toPx(), centerY - 10.dp.toPx())
@@ -1132,7 +1144,7 @@ private fun DrawScope.drawWingsAndTail(
             }
 
             // Trio of Long Flowing Fire Streamer Ribbons (Tail)
-            val streamCount = if (stage == PetStage.ADULTO) 3 else 2
+            val streamCount = if (stage == PetStage.ADULTO || stage == PetStage.IDOSO) 3 else 2
             for (i in 0 until streamCount) {
                 val yOffset = (i * 8.dp.toPx()) - 8.dp.toPx()
                 val streamer = Path().apply {

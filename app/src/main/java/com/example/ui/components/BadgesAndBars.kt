@@ -175,6 +175,7 @@ fun StageBadge(
         PetStage.FILHOTE -> Color(0xFF93C5FD)
         PetStage.JOVEM -> Color(0xFFA78BFA)
         PetStage.ADULTO -> Color(0xFFF472B6)
+        PetStage.IDOSO -> Color(0xFFF59E0B) // Amber Gold for Senior / Wise Elder
     }
 
     Surface(

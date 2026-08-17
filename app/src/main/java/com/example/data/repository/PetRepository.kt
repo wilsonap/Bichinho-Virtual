@@ -176,8 +176,9 @@ class PetRepository(private val dao: PetDao) {
             )
             dao.insertOrUpdatePet(pet)
         } else {
-            // Simulate offline stat changes
+            // Simulate offline stat changes (offline time does NOT grant XP)
             updateOfflineStats(pet)
+            checkEvolution()
         }
 
         // 4. Seed Initial Inventory ONLY if inventory table is completely empty (never use food_apple as indicator)
@@ -311,6 +312,7 @@ class PetRepository(private val dao: PetDao) {
                 AchievementEntity("ach_toy_1", "Primeiro Brinquedo", "Compre ou brinque com seu primeiro brinquedo", 40, 0, 1),
                 AchievementEntity("ach_evolve_1", "Primeira Evolução", "Evolua o bichinho de filhote para jovem", 100, 0, 1),
                 AchievementEntity("ach_adult", "Fase Adulta", "Crie o bichinho até atingir a fase adulta majestosa", 150, 0, 1),
+                AchievementEntity("ach_senior", "Ancião Sábio", "Alcance a fase Idoso com seu companheiro.", 300, 0, 1),
                 AchievementEntity("ach_streak_7", "Sete Dias Consecutivos", "Cuide do seu bichinho por 7 dias seguidos", 200, 0, 7),
                 AchievementEntity("ach_streak_30", "Trinta Dias Consecutivos", "Cuide do seu bichinho por 30 dias seguidos", 500, 0, 30),
                 AchievementEntity("ach_minigames_10", "Mestre dos Jogos", "Jogue 10 partidas de minijogos", 80, 0, 10),
@@ -348,6 +350,7 @@ class PetRepository(private val dao: PetDao) {
         val pet = dao.getPet() ?: throw IllegalStateException("Pet not found")
         val chosenSpecies = specificSpecies ?: Species.getRandomSpecies()
         val nameToUse = petName.ifBlank { pet.name.ifBlank { "Pipoca" } }
+        val now = System.currentTimeMillis()
 
         val hatchedPet = pet.copy(
             name = nameToUse,
@@ -362,10 +365,15 @@ class PetRepository(private val dao: PetDao) {
             exp = 0,
             totalExp = 0,
             level = 1,
+            birthTimestamp = if (pet.birthTimestamp > 0L) pet.birthTimestamp else now,
+            hatchedTimestamp = now,
+            youthTimestamp = 0L,
+            adultTimestamp = 0L,
+            seniorTimestamp = 0L,
             eggWarmProgress = 100,
             isHatched = true,
             isSleeping = false,
-            lastUpdateTimestamp = System.currentTimeMillis()
+            lastUpdateTimestamp = now
         )
         dao.insertOrUpdatePet(hatchedPet)
 
@@ -642,19 +650,43 @@ class PetRepository(private val dao: PetDao) {
         val newLevel = 1 + (newTotalExp / 60)
         val expInStage = (newTotalExp % 100)
 
-        // Stage evolution progression
-        var currentStage = PetStage.valueOf(pet.stage)
+        // Stage evolution progression calculated via central PetEvolutionCalculator (Non-Regression Hybrid Engine)
+        val currentStage = try {
+            PetStage.valueOf(pet.stage)
+        } catch (_: Exception) {
+            PetStage.FILHOTE
+        }
+
+        val now = System.currentTimeMillis()
+        val daysAlive = PetEvolutionCalculator.calculateDaysAlive(pet.birthTimestamp, now)
+        val eligibleStage = PetEvolutionCalculator.evaluateEligibleStage(
+            currentStage = currentStage,
+            daysAlive = daysAlive,
+            level = newLevel,
+            isHatched = pet.isHatched
+        )
+
+        var hatchedTs = pet.hatchedTimestamp
+        var youthTs = pet.youthTimestamp
+        var adultTs = pet.adultTimestamp
+        var seniorTs = pet.seniorTimestamp
         var evolutionsCount = 0
 
-        if (currentStage == PetStage.FILHOTE && newTotalExp >= 150) {
-            currentStage = PetStage.JOVEM
-            evolutionsCount++
-            updateAchievementProgress("ach_evolve_1", 1)
-        }
-        if (currentStage == PetStage.JOVEM && newTotalExp >= 450) {
-            currentStage = PetStage.ADULTO
-            evolutionsCount++
-            updateAchievementProgress("ach_adult", 1)
+        if (eligibleStage.ordinal > currentStage.ordinal) {
+            if (hatchedTs == 0L) hatchedTs = pet.birthTimestamp
+            if (eligibleStage.ordinal >= PetStage.JOVEM.ordinal && youthTs == 0L) {
+                youthTs = now
+                updateAchievementProgress("ach_evolve_1", 1)
+            }
+            if (eligibleStage.ordinal >= PetStage.ADULTO.ordinal && adultTs == 0L) {
+                adultTs = now
+                updateAchievementProgress("ach_adult", 1)
+            }
+            if (eligibleStage.ordinal >= PetStage.IDOSO.ordinal && seniorTs == 0L) {
+                seniorTs = now
+                updateAchievementProgress("ach_senior", 1)
+            }
+            evolutionsCount = eligibleStage.ordinal - currentStage.ordinal
         }
 
         if (evolutionsCount > 0) {
@@ -671,10 +703,76 @@ class PetRepository(private val dao: PetDao) {
             exp = expInStage,
             totalExp = newTotalExp,
             level = newLevel,
-            stage = currentStage.name,
-            lastUpdateTimestamp = System.currentTimeMillis()
+            stage = eligibleStage.name,
+            hatchedTimestamp = hatchedTs,
+            youthTimestamp = youthTs,
+            adultTimestamp = adultTs,
+            seniorTimestamp = seniorTs,
+            lastUpdateTimestamp = now
         )
         dao.insertOrUpdatePet(updated)
+    }
+
+    /**
+     * Verifica e aplica evolução do pet caso ele tenha cumprido os requisitos híbridos (dias + nível).
+     * @param now Timestamp da avaliação (injetável para testes).
+     * @return PetEntity atualizado se houve evolução ou o pet atual.
+     */
+    suspend fun checkEvolution(now: Long = System.currentTimeMillis()): PetEntity? {
+        val pet = dao.getPet() ?: return null
+        if (!pet.isHatched) return pet
+
+        val currentStage = try {
+            PetStage.valueOf(pet.stage)
+        } catch (_: Exception) {
+            PetStage.FILHOTE
+        }
+
+        val daysAlive = PetEvolutionCalculator.calculateDaysAlive(pet.birthTimestamp, now)
+        val eligibleStage = PetEvolutionCalculator.evaluateEligibleStage(
+            currentStage = currentStage,
+            daysAlive = daysAlive,
+            level = pet.level,
+            isHatched = pet.isHatched
+        )
+
+        if (eligibleStage.ordinal > currentStage.ordinal) {
+            var hatchedTs = pet.hatchedTimestamp
+            var youthTs = pet.youthTimestamp
+            var adultTs = pet.adultTimestamp
+            var seniorTs = pet.seniorTimestamp
+
+            if (hatchedTs == 0L) hatchedTs = pet.birthTimestamp
+            if (eligibleStage.ordinal >= PetStage.JOVEM.ordinal && youthTs == 0L) {
+                youthTs = now
+                updateAchievementProgress("ach_evolve_1", 1)
+            }
+            if (eligibleStage.ordinal >= PetStage.ADULTO.ordinal && adultTs == 0L) {
+                adultTs = now
+                updateAchievementProgress("ach_adult", 1)
+            }
+            if (eligibleStage.ordinal >= PetStage.IDOSO.ordinal && seniorTs == 0L) {
+                seniorTs = now
+                updateAchievementProgress("ach_senior", 1)
+            }
+
+            val evolutionsGained = eligibleStage.ordinal - currentStage.ordinal
+            val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
+            dao.insertOrUpdateGameStats(stats.copy(evolutionsCount = stats.evolutionsCount + evolutionsGained))
+
+            val updatedPet = pet.copy(
+                stage = eligibleStage.name,
+                hatchedTimestamp = hatchedTs,
+                youthTimestamp = youthTs,
+                adultTimestamp = adultTs,
+                seniorTimestamp = seniorTs,
+                lastUpdateTimestamp = now
+            )
+            dao.insertOrUpdatePet(updatedPet)
+            return updatedPet
+        }
+
+        return pet
     }
 
     suspend fun recordMinigameResult(gameType: String, score: Int, coinsEarned: Int) {

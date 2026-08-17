@@ -1,14 +1,22 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -17,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.GameStatsEntity
 import com.example.data.local.PetEntity
 import com.example.data.local.PlayerEntity
+import com.example.data.model.EvolutionProgress
+import com.example.data.model.PetEvolutionCalculator
 import com.example.data.model.PetStage
 import com.example.data.model.Rarity
 import com.example.data.model.Species
@@ -48,10 +58,9 @@ fun StatsScreen(
         SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it))
     } ?: "Hoje"
 
-    val daysAlive = pet?.birthTimestamp?.let {
-        val diffMs = System.currentTimeMillis() - it
-        (diffMs / (1000 * 60 * 60 * 24)).coerceAtLeast(1)
-    } ?: 1
+    val evolutionProgress: EvolutionProgress? = pet?.let {
+        PetEvolutionCalculator.getEvolutionProgress(it)
+    }
 
     Scaffold(
         topBar = {
@@ -100,11 +109,12 @@ fun StatsScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             StageBadge(stage)
                             Text(
-                                text = "Nível ${pet?.level ?: 1} (${pet?.totalExp ?: 0} XP total)",
+                                text = "Nível de Vínculo: ${pet?.level ?: 1}",
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -112,10 +122,135 @@ fun StatsScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = species.description,
+                            text = stage.description,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                         )
+                    }
+                }
+            }
+
+            // Hybrid Evolution & Bond Milestone Card
+            if (evolutionProgress != null && pet.isHatched) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        modifier = Modifier.fillMaxWidth().testTag("stats_evolution_card")
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Ciclo de Vida & Evolução",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF59E0B)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            StatRow(label = "Fase Atual", value = stage.displayName)
+
+                            if (evolutionProgress.nextStage != null) {
+                                val next = evolutionProgress.nextStage
+                                StatRow(label = "Próxima Fase", value = next.displayName)
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "Requisitos para Evolução:",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Requirement 1: Days of Life
+                                EvolutionRequirementRow(
+                                    title = "Tempo de Convivência Real",
+                                    currentValue = "${evolutionProgress.daysAlive} dias",
+                                    requiredValue = "${next.minDaysAlive} dias",
+                                    isMet = evolutionProgress.isDaysRequirementMet,
+                                    progress = if (next.minDaysAlive > 0) (evolutionProgress.daysAlive.toFloat() / next.minDaysAlive).coerceIn(0f, 1f) else 1f
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Requirement 2: Bond Level
+                                EvolutionRequirementRow(
+                                    title = "Nível Mínimo de Vínculo",
+                                    currentValue = "Nv. ${evolutionProgress.currentLevel}",
+                                    requiredValue = "Nv. ${next.minLevel}",
+                                    isMet = evolutionProgress.isLevelRequirementMet,
+                                    progress = if (next.minLevel > 0) (evolutionProgress.currentLevel.toFloat() / next.minLevel).coerceIn(0f, 1f) else 1f
+                                )
+                            } else {
+                                StatRow(label = "Próxima Fase", value = "Fase Máxima (Ancião Sábio)")
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFFEF3C7),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(text = "👑", fontSize = 24.sp)
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = "Companheiro Lendário & Sábio",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF92400E)
+                                            )
+                                            Text(
+                                                text = "Seu pet atingiu a sabedoria máxima da fase Idoso e continuará vivendo feliz com você indefinidamente!",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFFB45309)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Historical Evolution Dates
+                            val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                            val hasHistory = pet.hatchedTimestamp > 0L || pet.youthTimestamp > 0L || pet.adultTimestamp > 0L || pet.seniorTimestamp > 0L
+                            if (hasHistory) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Marcos Históricos:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                if (pet.hatchedTimestamp > 0L) {
+                                    StatRow(label = "🐣 Nascimento / Choco", value = dateFormat.format(Date(pet.hatchedTimestamp)))
+                                }
+                                if (pet.youthTimestamp > 0L) {
+                                    StatRow(label = "🌱 Fase Jovem", value = dateFormat.format(Date(pet.youthTimestamp)))
+                                }
+                                if (pet.adultTimestamp > 0L) {
+                                    StatRow(label = "⭐ Fase Adulta", value = dateFormat.format(Date(pet.adultTimestamp)))
+                                }
+                                if (pet.seniorTimestamp > 0L) {
+                                    StatRow(label = "👑 Fase Idoso (Ancião)", value = dateFormat.format(Date(pet.seniorTimestamp)))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -135,14 +270,15 @@ fun StatsScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        StatRow(label = "Dias de Convivência", value = "$daysAlive dia(s)")
-                        StatRow(label = "Data de Nascimento", value = birthDateFormatted)
+                        val daysCount = evolutionProgress?.daysAlive ?: 0
+                        StatRow(label = "Dias Reais de Vida", value = "$daysCount dia(s)")
+                        StatRow(label = "Data de Início", value = birthDateFormatted)
                         StatRow(label = "Refeições Servidas", value = "${stats?.timesFed ?: 0} vezes")
                         StatRow(label = "Banhos Tomados", value = "${stats?.timesBathed ?: 0} vezes")
                         StatRow(label = "Sonecas Realizadas", value = "${stats?.timesSlept ?: 0} vezes")
                         StatRow(label = "Brincadeiras e Jogos", value = "${stats?.timesPlayed ?: 0} vezes")
                         StatRow(label = "Visitas ao Médico", value = "${stats?.timesDoctor ?: 0} vezes")
-                        StatRow(label = "Evoluções Alcançadas", value = "${stats?.evolutionsCount ?: 0}")
+                        StatRow(label = "Evoluções Concluídas", value = "${stats?.evolutionsCount ?: 0}")
                     }
                 }
             }
@@ -178,6 +314,63 @@ fun StatsScreen(
 }
 
 @Composable
+private fun EvolutionRequirementRow(
+    title: String,
+    currentValue: String,
+    requiredValue: String,
+    isMet: Boolean,
+    progress: Float
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "$currentValue / $requiredValue",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isMet) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                if (isMet) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Concluído",
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(14.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.HourglassTop,
+                        contentDescription = "Em andamento",
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(3.dp))
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = if (isMet) Color(0xFF10B981) else Color(0xFFF59E0B),
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    }
+}
+
+@Composable
 private fun StatRow(label: String, value: String) {
     Row(
         modifier = Modifier
@@ -198,3 +391,4 @@ private fun StatRow(label: String, value: String) {
         )
     }
 }
+

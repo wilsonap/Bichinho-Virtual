@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -14,7 +16,7 @@ import androidx.room.RoomDatabase
         AchievementEntity::class,
         GameStatsEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,13 +26,24 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pet ADD COLUMN hatchedTimestamp INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE pet ADD COLUMN youthTimestamp INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE pet ADD COLUMN adultTimestamp INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE pet ADD COLUMN seniorTimestamp INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "bichinho_virtual.db"
-                ).fallbackToDestructiveMigration().build()
+                )
+                .addMigrations(MIGRATION_1_2)
+                .build()
                 INSTANCE = instance
                 instance
             }

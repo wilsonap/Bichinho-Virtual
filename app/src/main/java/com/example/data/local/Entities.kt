@@ -29,6 +29,10 @@ data class PetEntity(
     val equippedHat: String = "",
     val equippedAccessory: String = "",
     val roomTheme: String = "decor_bedroom",
+    val hatchedTimestamp: Long = 0L,
+    val youthTimestamp: Long = 0L,
+    val adultTimestamp: Long = 0L,
+    val seniorTimestamp: Long = 0L,
     val lastUpdateTimestamp: Long = System.currentTimeMillis()
 )
 
