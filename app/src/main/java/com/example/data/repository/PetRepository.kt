@@ -125,11 +125,13 @@ class PetRepository(private val dao: PetDao) {
         return simulated.wasLonging
     }
 
-    suspend fun tickLiveStats(): PetEntity? {
+    /**
+     * @param now Timestamp do tick (injetável para testes). Default: relógio do sistema.
+     */
+    suspend fun tickLiveStats(now: Long = System.currentTimeMillis()): PetEntity? {
         val pet = dao.getPet() ?: return null
         if (!pet.isHatched) return pet
 
-        val now = System.currentTimeMillis()
         var hunger = pet.hunger
         var energy = pet.energy
         var happiness = pet.happiness
@@ -151,8 +153,20 @@ class PetRepository(private val dao: PetDao) {
             // Health protected: no damage from hunger or hygiene during night
         } else {
             // --- DAYTIME (08:00 to 22:00): Active / Nap Period ---
+            // Paridade com offline: transição noite→dia força despertar (independente da energia).
+            // Não usa wakeUpPet() para não alterar o bônus de energia — só libera o controle do horário.
+            val wasNightAtLastUpdate =
+                com.example.notification.PetStatsCalculator.isNightTime(pet.lastUpdateTimestamp)
+            if (isSleeping && wasNightAtLastUpdate) {
+                isSleeping = false
+                Log.d(
+                    "SLEEP_AUDIT",
+                    "Auto-awakening pet at daytime start (08:00): night sleep ended (energy=$energy)"
+                )
+            }
+
             if (isSleeping) {
-                // Daytime Nap / Exhaustion sleep
+                // Daytime Nap / Exhaustion sleep (inalterado)
                 energy = min(100, energy + 2)
                 if (energy >= 100) {
                     isSleeping = false

@@ -31,12 +31,8 @@ android {
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
     }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
-    }
+    // debug: sem override — usa o keystore padrão do AGP
+    // (%USERPROFILE%\.android\debug.keystore)
   }
 
   buildTypes {
@@ -46,7 +42,7 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    // debug: assinatura padrão do AGP (não customizar)
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

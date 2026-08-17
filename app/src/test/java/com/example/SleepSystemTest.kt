@@ -279,4 +279,63 @@ class SleepSystemTest {
         assertEquals("Acordando", PetBehaviorState.ACORDANDO.displayName)
         assertEquals("Muito Feliz", PetBehaviorState.FELIZ.displayName)
     }
+
+    /**
+     * Live (app aberto): último tick às 07:59 (noite) → tick às 08:00 deve acordar
+     * independentemente da energia (paridade com offline).
+     */
+    @Test
+    fun testLiveTickAutoAwakeningAt0800RegardlessOfEnergy() = runBlocking {
+        val t0759 = getTimestampForHour(0, 7, 59)
+        val t0800 = getTimestampForHour(0, 8, 0)
+        // Energia baixa de propósito: antes da correção o live só acordava em 100%
+        val pet = createTestPet(energy = 40, isSleeping = true, lastUpdate = t0759)
+        petDao.insertOrUpdatePet(pet)
+
+        val updated = repository.tickLiveStats(now = t0800)
+
+        assertNotNull(updated)
+        assertFalse(
+            "Às 08:00 o pet deve acordar no tick live mesmo com energia < 100",
+            updated!!.isSleeping
+        )
+        // Após acordar, o mesmo tick aplica decay diurno (-1 energia). Sem bônus de wakeUpPet.
+        assertEquals(39, updated.energy)
+
+    /**
+     * Offline (app fechado): 07:59 → 08:00 também acorda com energia < 100.
+     * Garante o mesmo comportamento do cenário live acima.
+     */
+    @Test
+    fun testOfflineAutoAwakeningAt0800RegardlessOfEnergy() {
+        val t0759 = getTimestampForHour(0, 7, 59)
+        val t0800 = getTimestampForHour(0, 8, 0)
+        val pet = createTestPet(energy = 40, isSleeping = true, lastUpdate = t0759)
+
+        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0800)
+
+        assertFalse(simulated.isSleeping)
+        assertEquals(40, simulated.energy)
+    }
+
+    /**
+     * Sono por exaustão diurno permanece: último update já de dia + energia < 100
+     * → tick live NÃO força despertar só por ser horário diurno.
+     */
+    @Test
+    fun testLiveTickDoesNotForceWakeDuringDaytimeExhaustionNap() = runBlocking {
+        val t1400 = getTimestampForHour(0, 14, 0)
+        val t1401 = getTimestampForHour(0, 14, 1)
+        val pet = createTestPet(energy = 50, isSleeping = true, lastUpdate = t1400)
+        petDao.insertOrUpdatePet(pet)
+
+        val updated = repository.tickLiveStats(now = t1401)
+
+        assertNotNull(updated)
+        assertTrue(
+            "Sono por exaustão diurno deve continuar até energia 100%",
+            updated!!.isSleeping
+        )
+        assertEquals(52, updated.energy) // +2 no tick de sono diurno
+    }
 }
