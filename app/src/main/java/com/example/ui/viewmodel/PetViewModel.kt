@@ -757,7 +757,24 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
         audioManager.playSfx(SoundEffect.BUTTON)
         viewModelScope.launch {
             repository.equipItemById(item.id, item.category.name)
-            _toastMessage.value = "Acessório atualizado no seu bichinho! ✨"
+            if (item.category == ItemCategory.DECORACAO) {
+                val decorSpeech = when (item.id) {
+                    "decor_forest" -> "Adorei essa floresta! 🌲"
+                    "decor_beach" -> "Que praia linda! 🏖️"
+                    "decor_space" -> "Estou me sentindo no espaço! 🚀"
+                    else -> "Que quarto aconchegante! 🏠"
+                }
+                _autonomousState.update {
+                    it.copy(
+                        behaviorState = PetBehaviorState.FELIZ,
+                        currentSpeechText = decorSpeech,
+                        speechBubbleVisible = true
+                    )
+                }
+                _toastMessage.value = "Decoração alterada: ${item.name}! ✨"
+            } else {
+                _toastMessage.value = "Acessório atualizado no seu bichinho! ✨"
+            }
         }
     }
 
@@ -765,7 +782,24 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
         audioManager.playSfx(SoundEffect.BUTTON)
         viewModelScope.launch {
             repository.equipItem(item)
-            _toastMessage.value = if (item.isEquipped) "Desequipou ${item.name}." else "Equipou ${item.name}!"
+            if (item.category == ItemCategory.DECORACAO.name) {
+                val decorSpeech = when (item.itemId) {
+                    "decor_forest" -> "Adorei essa floresta! 🌲"
+                    "decor_beach" -> "Que praia linda! 🏖️"
+                    "decor_space" -> "Estou me sentindo no espaço! 🚀"
+                    else -> "Que quarto aconchegante! 🏠"
+                }
+                _autonomousState.update {
+                    it.copy(
+                        behaviorState = PetBehaviorState.FELIZ,
+                        currentSpeechText = decorSpeech,
+                        speechBubbleVisible = true
+                    )
+                }
+                _toastMessage.value = if (item.isEquipped) "Cenário padrão restaurado!" else "Cenário aplicado: ${item.name}! ✨"
+            } else {
+                _toastMessage.value = if (item.isEquipped) "Desequipou ${item.name}." else "Equipou ${item.name}!"
+            }
         }
     }
 

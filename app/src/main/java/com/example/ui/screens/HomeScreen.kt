@@ -77,14 +77,6 @@ fun HomeScreen(
 
     val configuration = LocalConfiguration.current
 
-    // Room background gradient
-    val roomBgBrush = when (pet.roomTheme) {
-        "decor_forest" -> Brush.verticalGradient(listOf(Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFF86EFAC)))
-        "decor_beach" -> Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFBAE6FD), Color(0xFF7DD3FC)))
-        "decor_space" -> Brush.verticalGradient(listOf(Color(0xFF1E1B4B), Color(0xFF312E81), Color(0xFF4C1D95)))
-        else -> Brush.verticalGradient(listOf(Color(0xFFFDF4FF), Color(0xFFFAE8FF), Color(0xFFF5D0FE)))
-    }
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -93,8 +85,17 @@ fun HomeScreen(
     ) {
         val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE || (maxWidth > maxHeight && maxWidth > 480.dp)
 
-        if (!pet.isSleeping) {
-            Box(modifier = Modifier.fillMaxSize().background(roomBgBrush))
+        // Thematic Room Scenery Layer (Placed strictly at the background behind pet & UI)
+        androidx.compose.animation.Crossfade(
+            targetState = pet.roomTheme,
+            animationSpec = tween(600, easing = FastOutSlowInEasing),
+            label = "room_scenery_crossfade"
+        ) { theme ->
+            RoomSceneryRenderer(
+                themeId = theme,
+                isSleeping = pet.isSleeping,
+                modifier = Modifier.fillMaxSize()
+            )
         }
 
         if (isLandscape) {
