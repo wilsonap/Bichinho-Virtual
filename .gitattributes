@@ -1,0 +1,7 @@
+# Audio assets must always be treated as binary to prevent UTF-8
+# replacement corruption (EF BF BD / U+FFFD) from text filters/tools.
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.aac binary
+*.m4a binary
