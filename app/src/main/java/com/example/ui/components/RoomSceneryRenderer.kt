@@ -13,21 +13,23 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import com.example.data.model.HouseRoom
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
  * Renders rich, animated thematic room environments with layered scenery
- * for Bedroom (Quarto Aconchegante), Forest (Floresta Mágica), Beach (Praia Tropical),
- * and Space (Espaço Sideral).
+ * for all House Rooms: Living Room (Sala de Estar), Bedroom (Quarto Aconchegante),
+ * Kitchen (Cozinha), Bathroom (Banheiro), Backyard (Quintal), and Garage (Garagem).
  *
- * Scenery layers strictly sit inside the pet living stage boundaries,
- * keeping the furniture perfectly framed and completely visible above all status panels.
+ * Preserves completely the Cozy Bedroom (Quarto Aconchegante) scenery layout,
+ * bed, rug, desk, shelf, window, and lamp.
  */
 @Composable
 fun RoomSceneryRenderer(
-    themeId: String,
-    isSleeping: Boolean,
+    room: HouseRoom = HouseRoom.LIVING_ROOM,
+    themeId: String = "decor_bedroom",
+    isSleeping: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "scenery_ambient")
@@ -58,11 +60,20 @@ fun RoomSceneryRenderer(
         val w = size.width
         val h = size.height
 
-        when (themeId) {
-            "decor_forest" -> drawMagicForestScene(w, h, ambientPhase, pulseProgress, isSleeping)
-            "decor_beach" -> drawTropicalBeachScene(w, h, ambientPhase, pulseProgress, isSleeping)
-            "decor_space" -> drawOuterSpaceScene(w, h, ambientPhase, pulseProgress, isSleeping)
-            else -> drawCozyBedroomScene(w, h, ambientPhase, pulseProgress, isSleeping)
+        when (room) {
+            HouseRoom.LIVING_ROOM -> drawLivingRoomScene(w, h, ambientPhase, pulseProgress, isSleeping)
+            HouseRoom.KITCHEN -> drawKitchenScene(w, h, ambientPhase, pulseProgress, isSleeping)
+            HouseRoom.BATHROOM -> drawBathroomScene(w, h, ambientPhase, pulseProgress, isSleeping)
+            HouseRoom.BACKYARD -> drawBackyardScene(w, h, ambientPhase, pulseProgress, isSleeping)
+            HouseRoom.GARAGE -> drawGarageScene(w, h, ambientPhase, pulseProgress, isSleeping)
+            HouseRoom.BEDROOM -> {
+                when (themeId) {
+                    "decor_forest" -> drawMagicForestScene(w, h, ambientPhase, pulseProgress, isSleeping)
+                    "decor_beach" -> drawTropicalBeachScene(w, h, ambientPhase, pulseProgress, isSleeping)
+                    "decor_space" -> drawOuterSpaceScene(w, h, ambientPhase, pulseProgress, isSleeping)
+                    else -> drawCozyBedroomScene(w, h, ambientPhase, pulseProgress, isSleeping)
+                }
+            }
         }
     }
 }

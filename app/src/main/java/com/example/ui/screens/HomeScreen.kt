@@ -12,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,7 +39,10 @@ import com.example.data.local.InventoryEntity
 import com.example.data.local.PetEntity
 import com.example.data.local.PlayerEntity
 import com.example.data.model.*
+import com.example.notification.PetStatsCalculator
 import com.example.ui.components.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -58,10 +63,25 @@ fun HomeScreen(
     onOpenShop: () -> Unit,
     onOpenInventory: () -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var showFeedDialog by remember { mutableStateOf(false) }
     var showToyDialog by remember { mutableStateOf(false) }
     var showDoctorDialog by remember { mutableStateOf(false) }
     var activeNotificationAlert by remember(notificationHighlight) { mutableStateOf(notificationHighlight) }
+
+    // House Room state (Living Room as default, Bedroom during night/sleep)
+    val isNightTime = PetStatsCalculator.isNightTime()
+    var currentRoom by remember(pet.isSleeping, isNightTime) {
+        mutableStateOf(if (pet.isSleeping || isNightTime) HouseRoom.BEDROOM else HouseRoom.LIVING_ROOM)
+    }
+
+    LaunchedEffect(pet.isSleeping) {
+        if (pet.isSleeping) {
+            currentRoom = HouseRoom.BEDROOM
+        } else if (currentRoom == HouseRoom.BEDROOM && !isNightTime) {
+            currentRoom = HouseRoom.LIVING_ROOM
+        }
+    }
 
     val species = Species.fromId(pet.speciesId)
     val stage = try {
@@ -115,6 +135,13 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    HouseRoomSelectorBar(
+                        currentRoom = currentRoom,
+                        isSleeping = pet.isSleeping,
+                        onSelectRoom = { currentRoom = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
                     PetStatsPanel(
                         pet = pet,
                         isSleeping = pet.isSleeping,
@@ -133,6 +160,7 @@ fun HomeScreen(
                 ) {
                     PetLivingStage(
                         pet = pet,
+                        currentRoom = currentRoom,
                         autonomousState = autonomousState,
                         isBathing = isBathing,
                         onInteractWithPet = onInteractWithPet,
@@ -145,10 +173,36 @@ fun HomeScreen(
                     CareActionsDock(
                         pet = pet,
                         isCompact = true,
-                        onFeedClick = { showFeedDialog = true },
-                        onBathe = onBathe,
-                        onToggleSleep = onToggleSleep,
-                        onPlay = { showToyDialog = true },
+                        onFeedClick = {
+                            val prev = currentRoom
+                            currentRoom = HouseRoom.KITCHEN
+                            showFeedDialog = true
+                        },
+                        onBathe = {
+                            val prev = currentRoom
+                            currentRoom = HouseRoom.BATHROOM
+                            onBathe()
+                            coroutineScope.launch {
+                                delay(2800)
+                                if (currentRoom == HouseRoom.BATHROOM && prev != HouseRoom.BATHROOM && !pet.isSleeping) {
+                                    currentRoom = prev
+                                }
+                            }
+                        },
+                        onToggleSleep = {
+                            if (pet.isSleeping) {
+                                onToggleSleep()
+                                currentRoom = HouseRoom.LIVING_ROOM
+                            } else {
+                                currentRoom = HouseRoom.BEDROOM
+                                onToggleSleep()
+                            }
+                        },
+                        onPlay = {
+                            val prev = currentRoom
+                            currentRoom = HouseRoom.BACKYARD
+                            showToyDialog = true
+                        },
                         onDoctorClick = { showDoctorDialog = true },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -176,8 +230,16 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                HouseRoomSelectorBar(
+                    currentRoom = currentRoom,
+                    isSleeping = pet.isSleeping,
+                    onSelectRoom = { currentRoom = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 PetLivingStage(
                     pet = pet,
+                    currentRoom = currentRoom,
                     autonomousState = autonomousState,
                     isBathing = isBathing,
                     onInteractWithPet = onInteractWithPet,
@@ -199,10 +261,36 @@ fun HomeScreen(
                 CareActionsDock(
                     pet = pet,
                     isCompact = false,
-                    onFeedClick = { showFeedDialog = true },
-                    onBathe = onBathe,
-                    onToggleSleep = onToggleSleep,
-                    onPlay = { showToyDialog = true },
+                    onFeedClick = {
+                        val prev = currentRoom
+                        currentRoom = HouseRoom.KITCHEN
+                        showFeedDialog = true
+                    },
+                    onBathe = {
+                        val prev = currentRoom
+                        currentRoom = HouseRoom.BATHROOM
+                        onBathe()
+                        coroutineScope.launch {
+                            delay(2800)
+                            if (currentRoom == HouseRoom.BATHROOM && prev != HouseRoom.BATHROOM && !pet.isSleeping) {
+                                currentRoom = prev
+                            }
+                        }
+                    },
+                    onToggleSleep = {
+                        if (pet.isSleeping) {
+                            onToggleSleep()
+                            currentRoom = HouseRoom.LIVING_ROOM
+                        } else {
+                            currentRoom = HouseRoom.BEDROOM
+                            onToggleSleep()
+                        }
+                    },
+                    onPlay = {
+                        val prev = currentRoom
+                        currentRoom = HouseRoom.BACKYARD
+                        showToyDialog = true
+                    },
                     onDoctorClick = { showDoctorDialog = true },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -211,23 +299,40 @@ fun HomeScreen(
 
         // Dialogs
         if (showFeedDialog) {
+            val previousRoomOnFeed = currentRoom
             FeedDialog(
                 inventory = inventory,
                 onDismiss = { showFeedDialog = false },
                 onFeedItem = { item ->
                     onFeed(item)
+                    coroutineScope.launch {
+                        delay(3200)
+                        if (currentRoom == HouseRoom.KITCHEN && previousRoomOnFeed != HouseRoom.KITCHEN && !pet.isSleeping) {
+                            currentRoom = previousRoomOnFeed
+                        }
+                    }
                 }
             )
         }
 
         if (showToyDialog) {
+            val previousRoomOnPlay = currentRoom
             ToySelectionDialog(
                 inventory = inventory,
                 onDismiss = { showToyDialog = false },
                 onPlayToy = { toy ->
                     onPlay(toy)
+                    coroutineScope.launch {
+                        delay(3400)
+                        if (currentRoom == HouseRoom.BACKYARD && previousRoomOnPlay != HouseRoom.BACKYARD && !pet.isSleeping) {
+                            currentRoom = previousRoomOnPlay
+                        }
+                    }
                 },
-                onOpenMinigames = onOpenMinigames
+                onOpenMinigames = {
+                    currentRoom = HouseRoom.GARAGE
+                    onOpenMinigames()
+                }
             )
         }
 
@@ -239,6 +344,50 @@ fun HomeScreen(
                 onPerformTreatment = { payWithCoins ->
                     onDoctor(payWithCoins)
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun HouseRoomSelectorBar(
+    currentRoom: HouseRoom,
+    isSleeping: Boolean,
+    onSelectRoom: (HouseRoom) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("house_room_selector_bar"),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
+    ) {
+        items(HouseRoom.entries) { room ->
+            val isSelected = currentRoom == room
+            FilterChip(
+                selected = isSelected,
+                onClick = {
+                    if (!isSleeping || room == HouseRoom.BEDROOM) {
+                        onSelectRoom(room)
+                    }
+                },
+                leadingIcon = {
+                    Text(text = room.icon, fontSize = 13.sp)
+                },
+                label = {
+                    Text(
+                        text = room.displayName,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 12.sp
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = if (isSleeping) Color(0xFF334155) else MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = if (isSleeping) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
+                    containerColor = if (isSleeping) Color(0xFF1E293B).copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(12.dp)
             )
         }
     }
@@ -407,6 +556,7 @@ private fun PetHeaderCard(
 @Composable
 private fun PetLivingStage(
     pet: PetEntity,
+    currentRoom: HouseRoom,
     autonomousState: PetAutonomousState,
     isBathing: Boolean,
     onInteractWithPet: () -> Unit,
@@ -429,11 +579,12 @@ private fun PetLivingStage(
     ) {
         // Thematic Room Scenery Layer (Rendered inside the living stage viewport)
         androidx.compose.animation.Crossfade(
-            targetState = pet.roomTheme,
-            animationSpec = tween(600, easing = FastOutSlowInEasing),
+            targetState = currentRoom to pet.roomTheme,
+            animationSpec = tween(500, easing = FastOutSlowInEasing),
             label = "room_scenery_crossfade"
-        ) { theme ->
+        ) { (room, theme) ->
             RoomSceneryRenderer(
+                room = room,
                 themeId = theme,
                 isSleeping = pet.isSleeping,
                 modifier = Modifier.fillMaxSize()
@@ -444,7 +595,7 @@ private fun PetLivingStage(
         val clampedWalkX = autonomousState.walkOffsetX.coerceIn(-roomMaxOffsetX, roomMaxOffsetX).dp
 
         val isSleeping = pet.isSleeping || autonomousState.behaviorState == PetBehaviorState.DORMINDO
-        val isBedroom = pet.roomTheme.isEmpty() || pet.roomTheme == "decor_bedroom"
+        val isBedroom = currentRoom == HouseRoom.BEDROOM
 
         // -----------------------------------------------------------------------------------------
         // EXACT ROOM GEOMETRY & BED COORDINATE REFERENCES
@@ -606,8 +757,20 @@ private fun PetLivingStage(
             )
         }
 
-        // Shortcut Banner for minigames when pet is bored / awake
-        if (!pet.isSleeping && pet.happiness < 50) {
+        // Minigames shortcut in Garage or when pet is bored / awake
+        if (currentRoom == HouseRoom.GARAGE && !pet.isSleeping) {
+            Button(
+                onClick = onOpenMinigames,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .testTag("garage_minigames_button")
+            ) {
+                Text(text = "🎮 Jogar Minijogos", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        } else if (!pet.isSleeping && pet.happiness < 50) {
             Button(
                 onClick = onOpenMinigames,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
