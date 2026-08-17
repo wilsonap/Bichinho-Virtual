@@ -33,6 +33,11 @@ data class PetEntity(
     val youthTimestamp: Long = 0L,
     val adultTimestamp: Long = 0L,
     val seniorTimestamp: Long = 0L,
+    val disease: String = "NONE",
+    val lowHygieneExposure: Int = 0,
+    val exhaustionCount: Int = 0,
+    val indigestionStreak: Int = 0,
+    val lastDoctorCheckupTimestamp: Long = 0L,
     val lastUpdateTimestamp: Long = System.currentTimeMillis()
 )
 

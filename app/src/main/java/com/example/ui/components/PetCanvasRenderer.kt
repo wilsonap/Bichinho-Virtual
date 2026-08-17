@@ -204,7 +204,7 @@ fun PetCanvasRenderer(
                 )
             } else {
                 // Render Hatched Pet
-                val isSick = pet.health < 40 || behaviorState == PetBehaviorState.DOENTE
+                val isSick = pet.health <= com.example.data.model.PetHealthRules.HEALTH_DOENTE_MAX || (pet.disease.isNotEmpty() && pet.disease != "NONE") || behaviorState == PetBehaviorState.DOENTE
                 val isDirty = pet.hygiene < 35
                 val isHappy = pet.happiness > 75 || behaviorState == PetBehaviorState.FELIZ || behaviorState == PetBehaviorState.BRINCANDO
                 val isHungry = pet.hunger < 30 || behaviorState == PetBehaviorState.PROCURANDO_COMIDA

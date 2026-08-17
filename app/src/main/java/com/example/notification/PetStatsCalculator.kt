@@ -1,6 +1,9 @@
 package com.example.notification
 
 import com.example.data.local.PetEntity
+import com.example.data.model.PetDisease
+import com.example.data.model.PetHealthRules
+import com.example.data.model.PetHealthState
 import java.util.Calendar
 import kotlin.math.max
 import kotlin.math.min
@@ -11,6 +14,10 @@ data class SimulatedPetState(
     val happiness: Int,
     val hygiene: Int,
     val health: Int,
+    val disease: String = PetDisease.NONE.name,
+    val lowHygieneExposure: Int = 0,
+    val exhaustionCount: Int = 0,
+    val indigestionStreak: Int = 0,
     val isSleeping: Boolean,
     val wasLonging: Boolean,
     val elapsedMinutes: Int
@@ -18,10 +25,10 @@ data class SimulatedPetState(
 
 object PetStatsCalculator {
 
-    const val HUNGER_THRESHOLD = 20
-    const val HYGIENE_THRESHOLD = 20
+    const val HUNGER_THRESHOLD = PetHealthRules.HUNGER_DAMAGE_THRESHOLD
+    const val HYGIENE_THRESHOLD = PetHealthRules.HYGIENE_DAMAGE_THRESHOLD
     const val ENERGY_THRESHOLD = 15
-    const val HEALTH_THRESHOLD = 30
+    const val HEALTH_THRESHOLD = PetHealthRules.HEALTH_DOENTE_MIN
     const val LONGING_THRESHOLD_MINUTES = 45
 
     /**
@@ -76,8 +83,8 @@ object PetStatsCalculator {
     /**
      * Single source of truth for simulating offline pet stats over time.
      * Accurately splits time intervals between:
-     * 1. Daytime (08:00 - 22:00): Active decay and daytime exhaustion sleep (auto-wakes at 100% energy).
-     * 2. Nighttime (22:00 - 08:00): Protected night sleep (stays sleeping even at 100%, no health/hygiene/happiness penalties).
+     * 1. Daytime (08:00 - 22:00): Active decay, disease risk exposure, and daytime exhaustion sleep.
+     * 2. Nighttime (22:00 - 08:00): Protected night sleep (stays sleeping even at 100%, no health/hygiene/happiness penalties, no disease contraction).
      */
     fun calculateSimulatedStats(pet: PetEntity, targetTimestamp: Long = System.currentTimeMillis()): SimulatedPetState {
         if (!pet.isHatched) {
@@ -87,6 +94,10 @@ object PetStatsCalculator {
                 happiness = pet.happiness,
                 hygiene = pet.hygiene,
                 health = pet.health,
+                disease = pet.disease,
+                lowHygieneExposure = pet.lowHygieneExposure,
+                exhaustionCount = pet.exhaustionCount,
+                indigestionStreak = pet.indigestionStreak,
                 isSleeping = pet.isSleeping,
                 wasLonging = false,
                 elapsedMinutes = 0
@@ -104,6 +115,10 @@ object PetStatsCalculator {
                 happiness = pet.happiness,
                 hygiene = pet.hygiene,
                 health = pet.health,
+                disease = pet.disease,
+                lowHygieneExposure = pet.lowHygieneExposure,
+                exhaustionCount = pet.exhaustionCount,
+                indigestionStreak = pet.indigestionStreak,
                 isSleeping = if (currentlyNight) true else pet.isSleeping,
                 wasLonging = false,
                 elapsedMinutes = 0
@@ -118,6 +133,10 @@ object PetStatsCalculator {
         var happiness = pet.happiness.toDouble()
         var hygiene = pet.hygiene.toDouble()
         var health = pet.health.toDouble()
+        var disease = pet.disease
+        var lowHygieneExposure = pet.lowHygieneExposure
+        var exhaustionCount = pet.exhaustionCount
+        var indigestionStreak = pet.indigestionStreak
         var isSleeping = pet.isSleeping
         var consecutiveDaytimeAwakeMinutes = 0
         var wasLonging = false
@@ -145,7 +164,7 @@ object PetStatsCalculator {
                 }
 
                 // Protected stats: hygiene and happiness do not decrease during night
-                // Health: Protected! No health damage from hunger or hygiene during night!
+                // Health & Disease: Protected! Zero damage and zero new diseases during night!
                 wasNightInPreviousMinute = true
             } else {
                 // --- DAYTIME (08:00 to 22:00): Active / Nap Period ---
@@ -190,12 +209,28 @@ object PetStatsCalculator {
                     // Daytime exhaustion sleep: if energy drops to <= 5, pet falls asleep automatically!
                     if (energy <= 5.0) {
                         isSleeping = true
+                        exhaustionCount++
+                        if (exhaustionCount >= PetHealthRules.EXHAUSTION_COUNT_LIMIT && disease == PetDisease.NONE.name) {
+                            disease = PetDisease.FADIGA.name
+                        }
                     }
 
-                    // Daytime health damage if starving or dirty
-                    if (hunger < 20.0 || hygiene < 20.0) {
+                    // Low hygiene exposure tracking
+                    if (hygiene <= PetHealthRules.HYGIENE_DAMAGE_THRESHOLD.toDouble()) {
+                        if (m % 5 == 0) {
+                            lowHygieneExposure++
+                            if (lowHygieneExposure >= PetHealthRules.LOW_HYGIENE_EXPOSURE_LIMIT && disease == PetDisease.NONE.name) {
+                                disease = PetDisease.RESFRIADO.name
+                            }
+                        }
+                    } else if (hygiene >= 60.0) {
+                        lowHygieneExposure = 0
+                    }
+
+                    // Daytime health damage if starving (hunger <= 20) or dirty (hygiene <= 20)
+                    if (hunger <= PetHealthRules.HUNGER_DAMAGE_THRESHOLD.toDouble() || hygiene <= PetHealthRules.HYGIENE_DAMAGE_THRESHOLD.toDouble()) {
                         if (m % 10 == 0) {
-                            health = max(10.0, health - 1.0) // -1 every 10 mins
+                            health = max(PetHealthRules.MIN_HEALTH.toDouble(), health - 1.0) // -1 every 10 mins
                         }
                     }
                 }
@@ -208,7 +243,11 @@ object PetStatsCalculator {
             energy = energy.toInt().coerceIn(0, 100),
             happiness = happiness.toInt().coerceIn(0, 100),
             hygiene = hygiene.toInt().coerceIn(0, 100),
-            health = health.toInt().coerceIn(10, 100),
+            health = health.toInt().coerceIn(PetHealthRules.MIN_HEALTH, PetHealthRules.MAX_HEALTH),
+            disease = disease,
+            lowHygieneExposure = lowHygieneExposure,
+            exhaustionCount = exhaustionCount,
+            indigestionStreak = indigestionStreak,
             isSleeping = isSleeping,
             wasLonging = wasLonging,
             elapsedMinutes = elapsedMinutes

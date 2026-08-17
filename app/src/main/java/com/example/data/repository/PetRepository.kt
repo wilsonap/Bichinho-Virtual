@@ -217,6 +217,10 @@ class PetRepository(private val dao: PetDao) {
             happiness = simulated.happiness,
             hygiene = simulated.hygiene,
             health = simulated.health,
+            disease = simulated.disease,
+            lowHygieneExposure = simulated.lowHygieneExposure,
+            exhaustionCount = simulated.exhaustionCount,
+            indigestionStreak = simulated.indigestionStreak,
             isSleeping = simulated.isSleeping,
             lastUpdateTimestamp = now
         )
@@ -236,6 +240,10 @@ class PetRepository(private val dao: PetDao) {
         var happiness = pet.happiness
         var hygiene = pet.hygiene
         var health = pet.health
+        var disease = pet.disease
+        var lowHygieneExposure = pet.lowHygieneExposure
+        var exhaustionCount = pet.exhaustionCount
+        var indigestionStreak = pet.indigestionStreak
         var isSleeping = pet.isSleeping
         val isNight = com.example.notification.PetStatsCalculator.isNightTime(now)
 
@@ -249,11 +257,10 @@ class PetRepository(private val dao: PetDao) {
                 hunger = max(0, hunger - 1)
             }
             // Hygiene and happiness protected from decay
-            // Health protected: no damage from hunger or hygiene during night
+            // Health protected: zero damage from hunger or hygiene during night
+            // Protected: no new disease during night
         } else {
             // --- DAYTIME (08:00 to 22:00): Active / Nap Period ---
-            // Paridade com offline: transição noite→dia força despertar (independente da energia).
-            // Não usa wakeUpPet() para não alterar o bônus de energia — só libera o controle do horário.
             val wasNightAtLastUpdate =
                 com.example.notification.PetStatsCalculator.isNightTime(pet.lastUpdateTimestamp)
             if (isSleeping && wasNightAtLastUpdate) {
@@ -265,7 +272,7 @@ class PetRepository(private val dao: PetDao) {
             }
 
             if (isSleeping) {
-                // Daytime Nap / Exhaustion sleep (inalterado)
+                // Daytime Nap / Exhaustion sleep
                 energy = min(100, energy + 2)
                 if (energy >= 100) {
                     isSleeping = false
@@ -281,13 +288,27 @@ class PetRepository(private val dao: PetDao) {
                 // Daytime exhaustion sleep: auto-sleep if energy <= 5
                 if (energy <= 5) {
                     isSleeping = true
+                    exhaustionCount++
+                    if (exhaustionCount >= PetHealthRules.EXHAUSTION_COUNT_LIMIT && disease == PetDisease.NONE.name) {
+                        disease = PetDisease.FADIGA.name
+                    }
                     Log.d("SLEEP_AUDIT", "Auto-sleeping pet: daytime energy dropped to <= 5%")
+                }
+
+                // Hygiene exposure tracking
+                if (hygiene <= PetHealthRules.HYGIENE_DAMAGE_THRESHOLD) {
+                    lowHygieneExposure++
+                    if (lowHygieneExposure >= PetHealthRules.LOW_HYGIENE_EXPOSURE_LIMIT && disease == PetDisease.NONE.name) {
+                        disease = PetDisease.RESFRIADO.name
+                    }
+                } else if (hygiene >= 60) {
+                    lowHygieneExposure = 0
                 }
             }
 
-            // Daytime health damage if starving or dirty
-            if (hunger < 15 || hygiene < 15) {
-                health = max(10, health - 1)
+            // Daytime health damage if starving (hunger <= 20) or dirty (hygiene <= 20)
+            if (hunger <= PetHealthRules.HUNGER_DAMAGE_THRESHOLD || hygiene <= PetHealthRules.HYGIENE_DAMAGE_THRESHOLD) {
+                health = max(PetHealthRules.MIN_HEALTH, health - 1)
             }
         }
 
@@ -297,6 +318,10 @@ class PetRepository(private val dao: PetDao) {
             happiness = happiness,
             hygiene = hygiene,
             health = health,
+            disease = disease,
+            lowHygieneExposure = lowHygieneExposure,
+            exhaustionCount = exhaustionCount,
+            indigestionStreak = indigestionStreak,
             isSleeping = isSleeping,
             lastUpdateTimestamp = now
         )
@@ -432,13 +457,30 @@ class PetRepository(private val dao: PetDao) {
             }
         }
 
+        // Indigestion tracking: sweets or overfeeding when hunger >= 90
+        var newIndigestionStreak = pet.indigestionStreak
+        var newDisease = pet.disease
+        val isSweetOrJunk = shopItem?.id in listOf("food_cookie", "food_pizza")
+        val isOverfed = pet.hunger >= 90
+
+        if (isSweetOrJunk || isOverfed) {
+            newIndigestionStreak++
+            if (newIndigestionStreak >= PetHealthRules.INDIGESTION_STREAK_LIMIT && newDisease == PetDisease.NONE.name) {
+                newDisease = PetDisease.INDIGESTAO.name
+            }
+        } else if (shopItem?.id in listOf("food_apple", "food_fish")) {
+            newIndigestionStreak = max(0, newIndigestionStreak - 1)
+        }
+
         applyPetCare(
             hungerDelta = hungerGain,
             energyDelta = energyGain,
             happinessDelta = happinessGain,
             hygieneDelta = -2,
             healthDelta = healthGain,
-            expDelta = expGain
+            expDelta = expGain,
+            customDisease = newDisease,
+            customIndigestionStreak = newIndigestionStreak
         )
 
         // Increment stats & daily missions
@@ -464,7 +506,8 @@ class PetRepository(private val dao: PetDao) {
             happinessDelta = 20,
             hygieneDelta = 60,
             healthDelta = 10,
-            expDelta = 15
+            expDelta = 15,
+            customLowHygieneExposure = 0
         )
 
         val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
@@ -488,6 +531,7 @@ class PetRepository(private val dao: PetDao) {
         val updated = pet.copy(
             isSleeping = false,
             energy = min(100, pet.energy + energyRestored),
+            exhaustionCount = if (pet.energy + energyRestored >= 70) 0 else pet.exhaustionCount,
             lastUpdateTimestamp = now
         )
         dao.insertOrUpdatePet(updated)
@@ -590,9 +634,33 @@ class PetRepository(private val dao: PetDao) {
             dao.updateInventoryItem(inv.copy(quantity = inv.quantity - 1))
         }
 
-        val healthGain = if (medicineItem.healthBoost > 0) medicineItem.healthBoost else 50
-        val energyGain = if (medicineItem.energyBoost > 0) medicineItem.energyBoost else 30
+        val healthGain = if (medicineItem.healthBoost > 0) medicineItem.healthBoost else 30
+        val energyGain = if (medicineItem.energyBoost > 0) medicineItem.energyBoost else 15
         val expGain = if (medicineItem.expBoost > 0) medicineItem.expBoost else 15
+
+        val currentDisease = PetDisease.fromString(pet.disease)
+        var newDisease = pet.disease
+        var newIndigestion = pet.indigestionStreak
+        var newHygieneExp = pet.lowHygieneExposure
+        var newExhaustion = pet.exhaustionCount
+
+        val isCurative = when (medicineItem.id) {
+            "med_potion", "food_potion" -> true
+            "med_vitamin" -> currentDisease == PetDisease.FADIGA
+            "med_digestive" -> currentDisease == PetDisease.INDIGESTAO
+            "med_cold" -> currentDisease == PetDisease.RESFRIADO
+            else -> false
+        }
+
+        if (isCurative) {
+            newDisease = PetDisease.NONE.name
+            when (currentDisease) {
+                PetDisease.INDIGESTAO -> newIndigestion = 0
+                PetDisease.RESFRIADO -> newHygieneExp = 0
+                PetDisease.FADIGA -> newExhaustion = 0
+                PetDisease.NONE -> {}
+            }
+        }
 
         // Medicines restore health and energy without modifying hunger
         applyPetCare(
@@ -601,7 +669,11 @@ class PetRepository(private val dao: PetDao) {
             happinessDelta = 15,
             hygieneDelta = 0,
             healthDelta = healthGain,
-            expDelta = expGain
+            expDelta = expGain,
+            customDisease = newDisease,
+            customIndigestionStreak = newIndigestion,
+            customLowHygieneExposure = newHygieneExp,
+            customExhaustionCount = newExhaustion
         )
 
         val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
@@ -609,25 +681,69 @@ class PetRepository(private val dao: PetDao) {
 
         Log.d(
             "ITEM_AUDIT",
-            "itemId=${medicineItem.id}, itemName=${medicineItem.name}, itemType=MEDICINE, action=USE_MEDICINE, result=SUCCESS(health+$healthGain, energy+$energyGain, hungerDelta=0, consumed=true)"
+            "itemId=${medicineItem.id}, itemName=${medicineItem.name}, cured=$isCurative, newDisease=$newDisease, action=USE_MEDICINE, result=SUCCESS(health+$healthGain, energy+$energyGain, hungerDelta=0, consumed=true)"
         )
         return true
     }
 
-    suspend fun doctorCheckup() {
-        val pet = dao.getPet() ?: return
-        if (!pet.isHatched) return
+    suspend fun doctorCheckup(payWithCoins: Boolean = false): DoctorCheckupResult {
+        val pet = dao.getPet() ?: return DoctorCheckupResult.Success(true, "Pet não encontrado")
+        if (!pet.isHatched) return DoctorCheckupResult.Success(true, "Ovo ainda não chocado")
+
+        val now = System.currentTimeMillis()
+        val elapsedSinceLast = now - pet.lastDoctorCheckupTimestamp
+        val isFree = elapsedSinceLast >= PetHealthRules.DOCTOR_COOLDOWN_MS || pet.lastDoctorCheckupTimestamp == 0L
+        val isCritical = pet.health <= PetHealthRules.HEALTH_CRITICO_MAX
+
+        var usedCoins = false
+
+        if (!isFree) {
+            val player = dao.getPlayer() ?: PlayerEntity()
+            if (payWithCoins) {
+                if (player.coins >= PetHealthRules.DOCTOR_PAID_COST) {
+                    dao.insertOrUpdatePlayer(player.copy(coins = player.coins - PetHealthRules.DOCTOR_PAID_COST))
+                    usedCoins = true
+                } else if (isCritical) {
+                    // Emergency care
+                    val coinsToDeduct = min(player.coins, PetHealthRules.DOCTOR_PAID_COST)
+                    dao.insertOrUpdatePlayer(player.copy(coins = player.coins - coinsToDeduct))
+                    usedCoins = true
+                } else {
+                    return DoctorCheckupResult.InsufficientCoins(PetHealthRules.DOCTOR_PAID_COST, player.coins)
+                }
+            } else if (isCritical) {
+                val playerCoins = player.coins
+                val coinsToDeduct = min(playerCoins, PetHealthRules.DOCTOR_PAID_COST)
+                if (coinsToDeduct > 0) {
+                    dao.insertOrUpdatePlayer(player.copy(coins = playerCoins - coinsToDeduct))
+                    usedCoins = true
+                }
+            } else {
+                val remainingMs = PetHealthRules.DOCTOR_COOLDOWN_MS - elapsedSinceLast
+                return DoctorCheckupResult.Cooldown(remainingMs, PetHealthRules.DOCTOR_PAID_COST)
+            }
+        }
 
         val updated = pet.copy(
             health = 100,
             happiness = min(100, pet.happiness + 20),
             energy = min(100, pet.energy + 15),
-            lastUpdateTimestamp = System.currentTimeMillis()
+            disease = PetDisease.NONE.name,
+            lowHygieneExposure = 0,
+            exhaustionCount = 0,
+            indigestionStreak = 0,
+            lastDoctorCheckupTimestamp = now,
+            lastUpdateTimestamp = now
         )
         dao.insertOrUpdatePet(updated)
 
         val stats = dao.getGameStats() ?: GameStatsEntity(id = 1)
         dao.insertOrUpdateGameStats(stats.copy(timesDoctor = stats.timesDoctor + 1))
+
+        return DoctorCheckupResult.Success(
+            isFree = !usedCoins,
+            message = if (usedCoins) "Consulta realizada por ${PetHealthRules.DOCTOR_PAID_COST} moedas!" else "Consulta médica gratuita realizada com sucesso!"
+        )
     }
 
     private suspend fun applyPetCare(
@@ -636,7 +752,11 @@ class PetRepository(private val dao: PetDao) {
         happinessDelta: Int,
         hygieneDelta: Int,
         healthDelta: Int,
-        expDelta: Int
+        expDelta: Int,
+        customDisease: String? = null,
+        customIndigestionStreak: Int? = null,
+        customLowHygieneExposure: Int? = null,
+        customExhaustionCount: Int? = null
     ) {
         val pet = dao.getPet() ?: return
 
@@ -644,7 +764,12 @@ class PetRepository(private val dao: PetDao) {
         val newEnergy = min(100, max(0, pet.energy + energyDelta))
         val newHappiness = min(100, max(0, pet.happiness + happinessDelta))
         val newHygiene = min(100, max(0, pet.hygiene + hygieneDelta))
-        val newHealth = min(100, max(0, pet.health + healthDelta))
+        val newHealth = min(100, max(PetHealthRules.MIN_HEALTH, pet.health + healthDelta))
+
+        val newDisease = customDisease ?: pet.disease
+        val newIndigestionStreak = customIndigestionStreak ?: pet.indigestionStreak
+        val newLowHygieneExposure = customLowHygieneExposure ?: pet.lowHygieneExposure
+        val newExhaustionCount = customExhaustionCount ?: pet.exhaustionCount
 
         val newTotalExp = pet.totalExp + expDelta
         val newLevel = 1 + (newTotalExp / 60)
@@ -700,6 +825,10 @@ class PetRepository(private val dao: PetDao) {
             happiness = newHappiness,
             hygiene = newHygiene,
             health = newHealth,
+            disease = newDisease,
+            indigestionStreak = newIndigestionStreak,
+            lowHygieneExposure = newLowHygieneExposure,
+            exhaustionCount = newExhaustionCount,
             exp = expInStage,
             totalExp = newTotalExp,
             level = newLevel,

@@ -53,7 +53,7 @@ fun HomeScreen(
     onBathe: () -> Unit,
     onToggleSleep: () -> Unit,
     onPlay: (ShopItem?) -> Unit,
-    onDoctor: () -> Unit,
+    onDoctor: (Boolean) -> Unit,
     onOpenMinigames: () -> Unit,
     onOpenShop: () -> Unit,
     onOpenInventory: () -> Unit
@@ -233,9 +233,12 @@ fun HomeScreen(
 
         if (showDoctorDialog) {
             DoctorCheckupDialog(
-                currentHealth = pet.health,
+                pet = pet,
+                playerCoins = player?.coins ?: 0,
                 onDismiss = { showDoctorDialog = false },
-                onPerformTreatment = onDoctor
+                onPerformTreatment = { payWithCoins ->
+                    onDoctor(payWithCoins)
+                }
             )
         }
     }
@@ -351,8 +354,9 @@ private fun PetHeaderCard(
                             )
                         }
                     }
+                    val ageFormatted = PetEvolutionCalculator.formatAge(pet.birthTimestamp)
                     Text(
-                        text = "${species.displayName} • ${stage.displayName}",
+                        text = "${species.displayName} • ${stage.displayName} • $ageFormatted",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (pet.isSleeping) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant
                     )

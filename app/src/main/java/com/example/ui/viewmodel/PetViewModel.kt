@@ -699,24 +699,33 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     fun useMedicine(medicineItem: ShopItem) {
         audioManager.playSfx(SoundEffect.LEVEL_UP)
         viewModelScope.launch {
-            _autonomousState.update {
-                it.copy(
-                    behaviorState = PetBehaviorState.FELIZ,
-                    currentSpeechText = "Tomei ${medicineItem.name} e estou me sentindo bem melhor! 💊✨",
-                    speechBubbleVisible = true
-                )
-            }
+            val pet = petState.value
+            val previousDisease = pet?.disease ?: PetDisease.NONE.name
             val success = repository.useMedicine(medicineItem)
             if (success) {
                 notificationPrefs.onPetDoctorTreated()
                 PetCareScheduler.scheduleNextCheck(getApplication())
-                _toastMessage.value = "Usou ${medicineItem.name}! Saúde restaurada! 🩺❤️"
+                val updatedPet = repository.getPet()
+                val cured = previousDisease != PetDisease.NONE.name && (updatedPet?.disease == PetDisease.NONE.name || updatedPet?.disease.isNullOrEmpty())
+                val message = if (cured) {
+                    "Usou ${medicineItem.name}! Doença curada e saúde recuperada! 🩺❤️"
+                } else {
+                    "Usou ${medicineItem.name}! Saúde restaurada! 💊✨"
+                }
+                _toastMessage.value = message
+                _autonomousState.update {
+                    it.copy(
+                        behaviorState = PetBehaviorState.FELIZ,
+                        currentSpeechText = if (cured) "Oba! O remédio me curou completamente! 🥰✨" else "Tomei ${medicineItem.name} e estou me sentindo bem melhor! 💊✨",
+                        speechBubbleVisible = true
+                    )
+                }
             } else {
                 _toastMessage.value = "Item não disponível no inventário."
             }
             delay(2500)
             _autonomousState.update {
-                it.copy(behaviorState = PetBehaviorState.FELIZ, currentSpeechText = "Estou 100% forte e saudável! 💪✨")
+                it.copy(behaviorState = PetBehaviorState.FELIZ, currentSpeechText = "Estou me sentindo forte e saudável! 💪✨")
             }
         }
     }
@@ -730,20 +739,32 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun doctorCheckup() {
-        audioManager.playSfx(SoundEffect.PET_HAPPY)
+    fun doctorCheckup(payWithCoins: Boolean = false, onResult: ((DoctorCheckupResult) -> Unit)? = null) {
         viewModelScope.launch {
-            repository.doctorCheckup()
-            notificationPrefs.onPetDoctorTreated()
-            PetCareScheduler.scheduleNextCheck(getApplication())
-            _autonomousState.update {
-                it.copy(
-                    behaviorState = PetBehaviorState.FELIZ,
-                    currentSpeechText = "Agora estou com 100% de saúde e cheio de energia! 🩺❤️",
-                    speechBubbleVisible = true
-                )
+            val result = repository.doctorCheckup(payWithCoins = payWithCoins)
+            when (result) {
+                is DoctorCheckupResult.Success -> {
+                    audioManager.playSfx(SoundEffect.PET_HAPPY)
+                    notificationPrefs.onPetDoctorTreated()
+                    PetCareScheduler.scheduleNextCheck(getApplication())
+                    _autonomousState.update {
+                        it.copy(
+                            behaviorState = PetBehaviorState.FELIZ,
+                            currentSpeechText = "Agora estou com 100% de saúde e livre de doenças! 🩺❤️",
+                            speechBubbleVisible = true
+                        )
+                    }
+                    _toastMessage.value = result.message
+                }
+                is DoctorCheckupResult.Cooldown -> {
+                    val remainingMin = (result.remainingMs / (1000 * 60)) + 1
+                    _toastMessage.value = "Consulta gratuita em recarga ($remainingMin min restantes). Custa ${result.costCoins} moedas."
+                }
+                is DoctorCheckupResult.InsufficientCoins -> {
+                    _toastMessage.value = "Moedas insuficientes (${result.playerCoins}/${result.costCoins}) para a consulta médica paga."
+                }
             }
-            _toastMessage.value = "Checkup concluído! Saúde 100% restaurada! 🩺❤️"
+            onResult?.invoke(result)
         }
     }
 

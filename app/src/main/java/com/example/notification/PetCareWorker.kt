@@ -37,12 +37,36 @@ class PetCareWorker(
             val simulated = PetStatsCalculator.calculateSimulatedStats(pet, System.currentTimeMillis())
 
             // 1. Health Alert (Highest priority)
-            if (simulated.health <= PetStatsCalculator.HEALTH_THRESHOLD) {
+            val healthState = com.example.data.model.PetHealthState.fromHealth(simulated.health)
+            val petDisease = com.example.data.model.PetDisease.fromString(simulated.disease)
+            val effectivePetName = pet.name.ifBlank { "Seu bichinho" }
+
+            if (healthState != com.example.data.model.PetHealthState.SAUDAVEL || petDisease != com.example.data.model.PetDisease.NONE) {
                 if (prefs.isHealthEnabled && !prefs.hasNotifiedHealth) {
+                    val (healthTitle, healthMsg) = when {
+                        healthState == com.example.data.model.PetHealthState.CRITICO -> Pair(
+                            "Saúde Crítica! 🚨",
+                            "🚨 A saúde de $effectivePetName está crítica! Dê remédios ou leve ao médico imediatamente."
+                        )
+                        petDisease != com.example.data.model.PetDisease.NONE -> Pair(
+                            "Bichinho Doente! 🩹",
+                            "🩹 $effectivePetName está com ${petDisease.displayName} e precisa de cuidados."
+                        )
+                        healthState == com.example.data.model.PetHealthState.DOENTE -> Pair(
+                            "Bichinho Doente! 🩹",
+                            "🩹 $effectivePetName ficou doente e precisa de cuidados."
+                        )
+                        else -> Pair(
+                            "Bichinho Indisposto 💛",
+                            "💛 $effectivePetName não está se sentindo muito bem."
+                        )
+                    }
                     NotificationHelper.sendPetNotification(
                         applicationContext,
                         PetNotificationType.HEALTH,
-                        pet.name
+                        pet.name,
+                        customTitle = healthTitle,
+                        customMessage = healthMsg
                     )
                     prefs.hasNotifiedHealth = true
                     prefs.incrementDailyNotificationCount()

@@ -39,9 +39,11 @@ object ShopCatalog {
         ShopItem("toy_laser", "Laser Brincalhão", ItemCategory.BRINQUEDO, 70, "Ponto vermelho que desperta o instinto.", "🔦", happinessBoost = 50, expBoost = 30, hungerBoost = 0),
         ShopItem("toy_plush", "Ursinho de Pelúcia", ItemCategory.BRINQUEDO, 90, "Companheiro fofinho para a soneca e abraços.", "🧸", happinessBoost = 60, energyBoost = 15, expBoost = 35, hungerBoost = 0),
 
-        // Medicamentos (Consumíveis, restauram Saúde e Energia, NÃO alteram fome)
-        ShopItem("med_potion", "Poção Revitalizante", ItemCategory.MEDICAMENTO, 60, "Restaura a saúde e energia ao máximo!", "🧪", healthBoost = 60, energyBoost = 40, expBoost = 25, hungerBoost = 0),
-        ShopItem("med_vitamin", "Vitamina Fortalecedora", ItemCategory.MEDICAMENTO, 35, "Fortalece a imunidade e dá disposição ao bichinho!", "💊", healthBoost = 30, energyBoost = 20, expBoost = 10, hungerBoost = 0),
+        // Medicamentos (Consumíveis, restauram Saúde e Energia, curam doenças específicas)
+        ShopItem("med_potion", "Poção Revitalizante", ItemCategory.MEDICAMENTO, 60, "Restaura a saúde (+60), energia (+40) e cura qualquer doença!", "🧪", healthBoost = 60, energyBoost = 40, expBoost = 25, hungerBoost = 0),
+        ShopItem("med_vitamin", "Vitamina Fortalecedora", ItemCategory.MEDICAMENTO, 35, "Fortalece a imunidade, cura Fadiga e recupera energia!", "💊", healthBoost = 30, energyBoost = 30, expBoost = 15, hungerBoost = 0),
+        ShopItem("med_digestive", "Remédio Digestivo", ItemCategory.MEDICAMENTO, 25, "Alivia desconforto estomacal e cura Indigestão.", "🍵", healthBoost = 25, energyBoost = 10, expBoost = 10, hungerBoost = 0),
+        ShopItem("med_cold", "Xarope para Resfriado", ItemCategory.MEDICAMENTO, 25, "Alivia espirros, febre e cura Resfriado.", "🍯", healthBoost = 25, energyBoost = 10, expBoost = 10, hungerBoost = 0),
 
         // Roupas
         ShopItem("cloth_hat_magic", "Chapéu de Mago", ItemCategory.ROUPA, 120, "Aumenta a aura mágica do seu bichinho.", "🧙‍♂️", happinessBoost = 15),

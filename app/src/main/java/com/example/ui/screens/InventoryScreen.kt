@@ -24,10 +24,17 @@ import com.example.data.model.ItemCategory
 import com.example.data.model.ShopCatalog
 import com.example.data.model.ShopItem
 
+import androidx.compose.material.icons.filled.LocalHospital
+import com.example.data.local.PetEntity
+import com.example.data.model.PetDisease
+import com.example.data.model.PetHealthRules
+import com.example.data.model.PetHealthState
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InventoryScreen(
     inventory: List<InventoryEntity>,
+    pet: PetEntity? = null,
     onUseItem: (ShopItem) -> Unit,
     onEquipItem: (InventoryEntity) -> Unit
 ) {
@@ -100,6 +107,64 @@ fun InventoryScreen(
                             )
                         }
                     )
+                }
+            }
+
+            // Medicine Status Header
+            if (selectedCategory == ItemCategory.MEDICAMENTO && pet != null) {
+                val healthState = PetHealthRules.getHealthState(pet.health)
+                val disease = PetDisease.entries.find { it.name.equals(pet.disease, ignoreCase = true) } ?: PetDisease.NONE
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = when (healthState) {
+                        PetHealthState.SAUDAVEL -> Color(0xFFDCFCE7)
+                        PetHealthState.INDISPOSTO -> Color(0xFFFEF3C7)
+                        PetHealthState.DOENTE -> Color(0xFFFFEDD5)
+                        PetHealthState.CRITICO -> Color(0xFFFEE2E2)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocalHospital,
+                            contentDescription = null,
+                            tint = when (healthState) {
+                                PetHealthState.SAUDAVEL -> Color(0xFF15803D)
+                                PetHealthState.INDISPOSTO -> Color(0xFFB45309)
+                                PetHealthState.DOENTE -> Color(0xFFC2410C)
+                                PetHealthState.CRITICO -> Color(0xFFB91C1C)
+                            },
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Saúde: ${pet.health}/100 • ${healthState.displayName}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = when (healthState) {
+                                    PetHealthState.SAUDAVEL -> Color(0xFF15803D)
+                                    PetHealthState.INDISPOSTO -> Color(0xFFB45309)
+                                    PetHealthState.DOENTE -> Color(0xFFC2410C)
+                                    PetHealthState.CRITICO -> Color(0xFFB91C1C)
+                                }
+                            )
+                            Text(
+                                text = if (disease != PetDisease.NONE) {
+                                    "Diagnóstico: ${disease.displayName} • ${disease.recommendedCure}"
+                                } else {
+                                    "Bichinho 100% saudável! Medicamentos fortalecem a imunidade."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
 
@@ -196,6 +261,42 @@ fun InventoryScreen(
                                         overflow = TextOverflow.Ellipsis,
                                         textAlign = TextAlign.Center
                                     )
+
+                                    if (selectedCategory == ItemCategory.MEDICAMENTO && shopItem != null) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        val disease = PetDisease.entries.find { it.name.equals(pet?.disease, ignoreCase = true) } ?: PetDisease.NONE
+                                        val isRecommended = when (shopItem.id) {
+                                            "med_potion" -> disease != PetDisease.NONE || (pet?.health ?: 100) < 60
+                                            "med_cold" -> disease == PetDisease.RESFRIADO
+                                            "med_digestive" -> disease == PetDisease.INDIGESTAO
+                                            "med_vitamin" -> disease == PetDisease.FADIGA || (pet?.energy ?: 100) < 40
+                                            else -> false
+                                        }
+
+                                        if (isRecommended) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFFEF3C7),
+                                                modifier = Modifier.padding(bottom = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "⭐ Recomendado",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFB45309),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = shopItem.description,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
 
                                     Spacer(modifier = Modifier.height(10.dp))
 

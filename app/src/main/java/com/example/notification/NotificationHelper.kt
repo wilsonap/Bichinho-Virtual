@@ -123,7 +123,9 @@ object NotificationHelper {
     fun sendPetNotification(
         context: Context,
         type: PetNotificationType,
-        petName: String
+        petName: String,
+        customTitle: String? = null,
+        customMessage: String? = null
     ) {
         val effectiveName = petName.ifBlank { "Seu bichinho" }
 
@@ -135,7 +137,7 @@ object NotificationHelper {
 
         val quietHours = isQuietHours()
 
-        val (title, message, notificationId, defaultChannelId, priority) = when (type) {
+        val (defTitle, defMessage, notificationId, defaultChannelId, priority) = when (type) {
             PetNotificationType.HUNGER -> {
                 Tuple5(
                     "Hora do Lanchinho! 🍎",
@@ -191,6 +193,9 @@ object NotificationHelper {
                 )
             }
         }
+
+        val title = customTitle ?: defTitle
+        val message = customMessage ?: defMessage
 
         // Quiet hours: Override channel to silent, disable sound/vibration
         val channelToUse = if (quietHours) CHANNEL_SILENT_ID else defaultChannelId

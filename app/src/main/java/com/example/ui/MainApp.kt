@@ -225,7 +225,7 @@ fun MainApp(
                         onBathe = { viewModel.bathe() },
                         onToggleSleep = { viewModel.toggleSleep() },
                         onPlay = { item -> viewModel.playWithToy(item) },
-                        onDoctor = { viewModel.doctorCheckup() },
+                        onDoctor = { payWithCoins -> viewModel.doctorCheckup(payWithCoins) },
                         onOpenMinigames = { navController.navigate(Screen.Minigames.route) },
                         onOpenShop = { navController.navigate(Screen.Shop.route) },
                         onOpenInventory = { navController.navigate(Screen.Inventory.route) }
@@ -270,6 +270,7 @@ fun MainApp(
             composable(Screen.Inventory.route) {
                 InventoryScreen(
                     inventory = inventory,
+                    pet = pet,
                     onUseItem = { item -> viewModel.useItem(item) },
                     onEquipItem = { item -> viewModel.equipInventoryItem(item) }
                 )

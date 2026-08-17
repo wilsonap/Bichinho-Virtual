@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.InventoryEntity
+import com.example.data.local.PetEntity
 import com.example.data.model.ItemCategory
 import com.example.data.model.PetStage
 import com.example.data.model.ShopCatalog
@@ -134,10 +135,23 @@ fun MandatoryNamingDialog(
 
 @Composable
 fun DoctorCheckupDialog(
-    currentHealth: Int,
+    pet: PetEntity,
+    playerCoins: Int,
     onDismiss: () -> Unit,
-    onPerformTreatment: () -> Unit
+    onPerformTreatment: (payWithCoins: Boolean) -> Unit
 ) {
+    val healthState = com.example.data.model.PetHealthRules.getHealthState(pet.health)
+    val disease = com.example.data.model.PetDisease.entries.find { it.name.equals(pet.disease, ignoreCase = true) } ?: com.example.data.model.PetDisease.NONE
+    val hasDisease = disease != com.example.data.model.PetDisease.NONE
+
+    val now = System.currentTimeMillis()
+    val elapsed = now - pet.lastDoctorCheckupTimestamp
+    val isFreeAvailable = elapsed >= com.example.data.model.PetHealthRules.DOCTOR_COOLDOWN_MS || pet.lastDoctorCheckupTimestamp == 0L || healthState == com.example.data.model.PetHealthState.CRITICO
+    val remainingMs = (com.example.data.model.PetHealthRules.DOCTOR_COOLDOWN_MS - elapsed).coerceAtLeast(0L)
+    val remainingMinutes = (remainingMs / (1000 * 60)) + 1
+    val costCoins = com.example.data.model.PetHealthRules.DOCTOR_PAID_COST_COINS
+    val canAffordPaid = playerCoins >= costCoins
+
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
@@ -156,35 +170,109 @@ fun DoctorCheckupDialog(
             )
         },
         text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "Estado de Saúde Atual: $currentHealth/100",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (currentHealth < 40) Color(0xFFEF4444) else Color(0xFF10B981)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = if (currentHealth < 50) {
-                        "O bichinho está com a saúde frágil! A consulta médica aplicará vitaminas, remédios e curativos para restaurar 100% da saúde."
-                    } else {
-                        "Seu bichinho está bem! Uma consulta de rotina garantirá imunidade, energia e máxima disposição."
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Health status pill
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = when (healthState) {
+                        com.example.data.model.PetHealthState.SAUDAVEL -> Color(0xFFDCFCE7)
+                        com.example.data.model.PetHealthState.INDISPOSTO -> Color(0xFFFEF3C7)
+                        com.example.data.model.PetHealthState.DOENTE -> Color(0xFFFFEDD5)
+                        com.example.data.model.PetHealthState.CRITICO -> Color(0xFFFEE2E2)
                     },
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Saúde: ${pet.health}/100 • ${healthState.displayName.uppercase()}",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = when (healthState) {
+                                com.example.data.model.PetHealthState.SAUDAVEL -> Color(0xFF15803D)
+                                com.example.data.model.PetHealthState.INDISPOSTO -> Color(0xFFB45309)
+                                com.example.data.model.PetHealthState.DOENTE -> Color(0xFFC2410C)
+                                com.example.data.model.PetHealthState.CRITICO -> Color(0xFFB91C1C)
+                            }
+                        )
+                    }
+                }
+
+                // Disease Diagnosis Box
+                if (hasDisease) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F2)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECDD3)),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "🩺 Diagnóstico: ${disease.displayName}",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFBE123C)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = disease.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF4C0519)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "💊 Cura recomendada: ${disease.recommendedCure}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF9F1239)
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = if (isFreeAvailable) {
+                        if (healthState == com.example.data.model.PetHealthState.CRITICO) {
+                            "🚨 Atendimento de emergência imediato e gratuito! A consulta irá curar qualquer doença e restaurar 100% da saúde."
+                        } else {
+                            "✨ Consulta de rotina disponível! Irá curar enfermidades e restabelecer 100% da saúde do bichinho."
+                        }
+                    } else {
+                        "⏳ A consulta gratuita está em recarga ($remainingMinutes min restantes). Você pode aguardar ou realizar um checkup imediato por $costCoins moedas (Saldo: $playerCoins 🪙)."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    onPerformTreatment()
-                    onDismiss()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                modifier = Modifier.testTag("confirm_doctor_button")
-            ) {
-                Text("Tratar Bichinho (100% Saúde)", fontWeight = FontWeight.Bold)
+            if (isFreeAvailable) {
+                Button(
+                    onClick = {
+                        onPerformTreatment(false)
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                    modifier = Modifier.testTag("confirm_doctor_free_button")
+                ) {
+                    Text("Consulta Gratuita (100% Saúde)", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = {
+                        onPerformTreatment(true)
+                        onDismiss()
+                    },
+                    enabled = canAffordPaid,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    modifier = Modifier.testTag("confirm_doctor_paid_button")
+                ) {
+                    Text("Tratar Agora ($costCoins 🪙)", fontWeight = FontWeight.Bold)
+                }
             }
         },
         dismissButton = {

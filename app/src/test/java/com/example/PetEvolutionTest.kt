@@ -195,4 +195,29 @@ class PetEvolutionTest {
         assertTrue(progress.isMaxStage)
         assertFalse(progress.canEvolve)
     }
+
+    @Test
+    fun testFormatAge_formattingRules() {
+        val now = System.currentTimeMillis()
+
+        // Less than 24 hours (0 days)
+        val bornToday = now - (4 * 3600 * 1000L) // 4 hours ago
+        assertEquals("Hoje", PetEvolutionCalculator.formatAge(bornToday, now))
+
+        // Exactly 1 day (between 24h and 48h)
+        val born1DayAgo = now - (28 * 3600 * 1000L) // 28 hours ago
+        assertEquals("1 dia", PetEvolutionCalculator.formatAge(born1DayAgo, now))
+
+        // 2 days
+        val born2DaysAgo = now - (2 * oneDayMs)
+        assertEquals("2 dias", PetEvolutionCalculator.formatAge(born2DaysAgo, now))
+
+        // 14 days (Coruja Valorante example)
+        val born14DaysAgo = now - (14 * oneDayMs)
+        assertEquals("14 dias", PetEvolutionCalculator.formatAge(born14DaysAgo, now))
+
+        // 30 days
+        val born30DaysAgo = now - (30 * oneDayMs)
+        assertEquals("30 dias", PetEvolutionCalculator.formatAge(born30DaysAgo, now))
+    }
 }

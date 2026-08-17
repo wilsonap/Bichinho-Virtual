@@ -97,4 +97,36 @@ object PetEvolutionCalculator {
             isReadyToEvolve = isReady
         )
     }
+
+    /**
+     * Retorna a formatação de idade padronizada do bichinho baseada no birthTimestamp:
+     * - Menos de 24 horas: "Hoje"
+     * - 1 dia: "1 dia"
+     * - 2 ou mais dias: "X dias"
+     */
+    fun formatAge(birthTimestamp: Long, now: Long = System.currentTimeMillis()): String {
+        val days = calculateDaysAlive(birthTimestamp, now)
+        return formatDays(days)
+    }
+
+    /**
+     * Formata uma quantidade inteira de dias:
+     * - 0 dias: "Hoje"
+     * - 1 dia: "1 dia"
+     * - >= 2 dias: "X dias"
+     */
+    fun formatDays(days: Int): String {
+        return when {
+            days <= 0 -> "Hoje"
+            days == 1 -> "1 dia"
+            else -> "$days dias"
+        }
+    }
+
+    /**
+     * Retorna a string completa descritiva da idade para visualização detalhada.
+     */
+    fun getAgeDisplay(pet: PetEntity, now: Long = System.currentTimeMillis()): String {
+        return formatAge(pet.birthTimestamp, now)
+    }
 }

@@ -132,6 +132,7 @@ fun StatsScreen(
 
             // Hybrid Evolution & Bond Milestone Card
             if (evolutionProgress != null && pet.isHatched) {
+                val ageFormatted = PetEvolutionCalculator.formatDays(evolutionProgress.daysAlive)
                 item {
                     Card(
                         shape = RoundedCornerShape(18.dp),
@@ -158,6 +159,8 @@ fun StatsScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
+                            StatRow(label = "Idade Atual", value = ageFormatted)
+                            StatRow(label = "Data de Nascimento", value = birthDateFormatted)
                             StatRow(label = "Fase Atual", value = stage.displayName)
 
                             if (evolutionProgress.nextStage != null) {
@@ -175,11 +178,15 @@ fun StatsScreen(
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
 
+                                val daysRemaining = (next.minDaysAlive - evolutionProgress.daysAlive).coerceAtLeast(0)
+                                val levelRemaining = (next.minLevel - evolutionProgress.currentLevel).coerceAtLeast(0)
+
                                 // Requirement 1: Days of Life
                                 EvolutionRequirementRow(
                                     title = "Tempo de Convivência Real",
                                     currentValue = "${evolutionProgress.daysAlive} dias",
                                     requiredValue = "${next.minDaysAlive} dias",
+                                    remainingText = if (evolutionProgress.isDaysRequirementMet) "Requisito de tempo cumprido ✓" else "Faltam $daysRemaining dia(s)",
                                     isMet = evolutionProgress.isDaysRequirementMet,
                                     progress = if (next.minDaysAlive > 0) (evolutionProgress.daysAlive.toFloat() / next.minDaysAlive).coerceIn(0f, 1f) else 1f
                                 )
@@ -191,6 +198,7 @@ fun StatsScreen(
                                     title = "Nível Mínimo de Vínculo",
                                     currentValue = "Nv. ${evolutionProgress.currentLevel}",
                                     requiredValue = "Nv. ${next.minLevel}",
+                                    remainingText = if (evolutionProgress.isLevelRequirementMet) "Requisito de nível cumprido ✓" else "Faltam $levelRemaining nível(is)",
                                     isMet = evolutionProgress.isLevelRequirementMet,
                                     progress = if (next.minLevel > 0) (evolutionProgress.currentLevel.toFloat() / next.minLevel).coerceIn(0f, 1f) else 1f
                                 )
@@ -250,6 +258,76 @@ fun StatsScreen(
                                     StatRow(label = "👑 Fase Idoso (Ancião)", value = dateFormat.format(Date(pet.seniorTimestamp)))
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // Health, Disease & Vital Status Card
+            if (pet != null && pet.isHatched) {
+                val healthState = com.example.data.model.PetHealthRules.getHealthState(pet.health)
+                val disease = com.example.data.model.PetDisease.entries.find { it.name.equals(pet.disease, ignoreCase = true) } ?: com.example.data.model.PetDisease.NONE
+                item {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        modifier = Modifier.fillMaxWidth().testTag("stats_health_card")
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Saúde & Bem-Estar",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "🩺",
+                                    fontSize = 20.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            StatRow(label = "Saúde Atual", value = "${pet.health}/100")
+                            StatRow(label = "Estado Geral", value = healthState.displayName)
+                            StatRow(label = "Condição Médica", value = if (disease != com.example.data.model.PetDisease.NONE) disease.displayName else "Nenhuma doença (100% Saudável)")
+
+                            if (disease != com.example.data.model.PetDisease.NONE) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFFEE2E2),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(
+                                            text = "Tratamento Recomendado:",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF991B1B)
+                                        )
+                                        Text(
+                                            text = "${disease.recommendedCure} ou Consulta Veterinária.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFF7F1D1D)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "🌙 Proteção Noturna (22h às 08h): Sem perda de saúde por fome/higiene e sem surgimento de doenças durante a noite.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -318,10 +396,11 @@ private fun EvolutionRequirementRow(
     title: String,
     currentValue: String,
     requiredValue: String,
+    remainingText: String,
     isMet: Boolean,
     progress: Float
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -365,7 +444,13 @@ private fun EvolutionRequirementRow(
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp)),
             color = if (isMet) Color(0xFF10B981) else Color(0xFFF59E0B),
-            trackColor = MaterialTheme.colorScheme.surfaceVariant
+            trackColor = MaterialTheme.colorScheme.surface
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = remainingText,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isMet) Color(0xFF059669) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
     }
 }
