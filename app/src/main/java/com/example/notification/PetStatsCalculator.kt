@@ -154,6 +154,7 @@ object PetStatsCalculator {
                     // Night rest ends automatically at 08:00
                     isSleeping = false
                     wasNightInPreviousMinute = false
+                    continue
                 }
 
                 if (isSleeping) {

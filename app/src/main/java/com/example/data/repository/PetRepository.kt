@@ -19,14 +19,112 @@ class PetRepository(private val dao: PetDao) {
     val achievementsFlow: Flow<List<AchievementEntity>> = dao.getAchievementsFlow()
     val gameStatsFlow: Flow<GameStatsEntity?> = dao.getGameStatsFlow()
 
+    private var _lastSanitizationResult: InventorySanitizationResult? = null
+    val lastSanitizationResult: InventorySanitizationResult?
+        get() = _lastSanitizationResult
+
     suspend fun getPet(): PetEntity? = dao.getPet()
 
     private fun getCurrentDateString(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
 
+    suspend fun sanitizeInventory(): InventorySanitizationResult {
+        val allItems = dao.getAllInventoryList()
+        if (allItems.isEmpty()) {
+            val emptyResult = InventorySanitizationResult(0, emptyList(), emptyMap())
+            _lastSanitizationResult = emptyResult
+            return emptyResult
+        }
+
+        val grouped = allItems.groupBy { it.itemId }
+        var duplicatesRemoved = 0
+        val consolidated = mutableListOf<String>()
+
+        val pet = dao.getPet()
+        val activeTheme = pet?.roomTheme?.ifBlank { "decor_bedroom" } ?: "decor_bedroom"
+        val activeHat = pet?.equippedHat.orEmpty()
+        val activeAccessory = pet?.equippedAccessory.orEmpty()
+
+        for ((itemId, items) in grouped) {
+            val primary = items.first()
+            val categoryName = primary.category
+            val isReusable = categoryName in listOf(
+                ItemCategory.BRINQUEDO.name,
+                ItemCategory.ROUPA.name,
+                ItemCategory.ACESSORIO.name,
+                ItemCategory.DECORACAO.name
+            )
+
+            val totalQuantity = if (isReusable) {
+                1
+            } else {
+                items.sumOf { it.quantity }
+            }
+
+            val isEquipped = when (categoryName) {
+                ItemCategory.DECORACAO.name -> (itemId == activeTheme)
+                ItemCategory.ROUPA.name -> (itemId == activeHat && activeHat.isNotBlank())
+                ItemCategory.ACESSORIO.name -> (itemId == activeAccessory && activeAccessory.isNotBlank())
+                else -> false
+            }
+
+            if (items.size > 1) {
+                // Update primary item with consolidated quantity and proper equipped status
+                dao.updateInventoryItem(
+                    primary.copy(
+                        quantity = totalQuantity,
+                        isEquipped = isEquipped
+                    )
+                )
+                // Delete duplicate excess rows
+                for (dup in items.drop(1)) {
+                    dao.deleteInventoryItem(dup.id)
+                    duplicatesRemoved++
+                }
+                consolidated.add(itemId)
+            } else {
+                var needsUpdate = false
+                var updatedItem = primary
+                if (isReusable && primary.quantity != 1) {
+                    updatedItem = updatedItem.copy(quantity = 1)
+                    needsUpdate = true
+                }
+                if (primary.isEquipped != isEquipped) {
+                    updatedItem = updatedItem.copy(isEquipped = isEquipped)
+                    needsUpdate = true
+                }
+                if (needsUpdate) {
+                    dao.updateInventoryItem(updatedItem)
+                }
+            }
+        }
+
+        // Guarantee only ONE decoration is marked isEquipped in database
+        dao.unequipCategory(ItemCategory.DECORACAO.name)
+        if (activeTheme.isNotBlank()) {
+            dao.setItemEquipped(activeTheme, true)
+        }
+
+        val freshList = dao.getAllInventoryList()
+        val multiQtyMap = freshList.filter { it.quantity > 1 }.associate { it.name.ifBlank { it.itemId } to it.quantity }
+
+        Log.d("ITEM_AUDIT", "sanitizeInventory finished: removed=$duplicatesRemoved, consolidated=$consolidated, multiQty=$multiQtyMap")
+
+        val result = InventorySanitizationResult(
+            totalDuplicatesRemoved = duplicatesRemoved,
+            consolidatedItemIds = consolidated,
+            itemsWithQuantityGreaterThanOne = multiQtyMap
+        )
+        _lastSanitizationResult = result
+        return result
+    }
+
     suspend fun initializeGameIfNeeded() {
-        // 1. Check Player
+        // 1. Sanitize Inventory first to clean any duplicates safely without data loss
+        sanitizeInventory()
+
+        // 2. Check Player
         var player = dao.getPlayer()
         val today = getCurrentDateString()
         if (player == null) {
@@ -52,7 +150,7 @@ class PetRepository(private val dao: PetDao) {
             }
         }
 
-        // 2. Check Pet (Single Pet Rule)
+        // 3. Check Pet (Single Pet Rule)
         var pet = dao.getPet()
         if (pet == null) {
             pet = PetEntity(
@@ -82,22 +180,22 @@ class PetRepository(private val dao: PetDao) {
             updateOfflineStats(pet)
         }
 
-        // 3. Seed Initial Inventory if empty
-        val currentInv = dao.getInventoryItem("food_apple")
-        if (currentInv == null) {
+        // 4. Seed Initial Inventory ONLY if inventory table is completely empty (never use food_apple as indicator)
+        val totalInventoryCount = dao.getInventoryCount()
+        if (totalInventoryCount == 0) {
             dao.insertInventoryItem(InventoryEntity(itemId = "food_apple", category = ItemCategory.ALIMENTO.name, name = "Maçã Fresca", quantity = 3))
             dao.insertInventoryItem(InventoryEntity(itemId = "food_cookie", category = ItemCategory.ALIMENTO.name, name = "Biscoito Doce", quantity = 2))
             dao.insertInventoryItem(InventoryEntity(itemId = "toy_ball", category = ItemCategory.BRINQUEDO.name, name = "Bola Saltitante", quantity = 1))
             dao.insertInventoryItem(InventoryEntity(itemId = "decor_bedroom", category = ItemCategory.DECORACAO.name, name = "Quarto Aconchegante", quantity = 1, isEquipped = true))
         }
 
-        // 4. Seed Achievements
+        // 5. Seed Achievements
         seedAchievementsIfNeeded()
 
-        // 5. Seed Daily Missions for Today
+        // 6. Seed Daily Missions for Today
         seedDailyMissionsIfNeeded(today)
 
-        // 6. Check Game Stats
+        // 7. Check Game Stats
         var stats = dao.getGameStats()
         if (stats == null) {
             stats = GameStatsEntity(id = 1)
@@ -625,11 +723,28 @@ class PetRepository(private val dao: PetDao) {
         val player = dao.getPlayer() ?: return false
         if (player.coins < item.price) return false
 
+        val isReusable = item.category in listOf(
+            ItemCategory.BRINQUEDO,
+            ItemCategory.ROUPA,
+            ItemCategory.ACESSORIO,
+            ItemCategory.DECORACAO
+        )
+
+        val existing = dao.getInventoryItem(item.id)
+
+        // Block repurchase of reusable items already owned
+        if (isReusable && existing != null && existing.quantity > 0) {
+            Log.w("ITEM_AUDIT", "itemId=${item.id}, action=BUY, result=REJECTED_ALREADY_OWNED")
+            if (equipImmediately && (item.category == ItemCategory.ROUPA || item.category == ItemCategory.ACESSORIO || item.category == ItemCategory.DECORACAO)) {
+                equipItem(existing)
+            }
+            return false
+        }
+
         // Deduct coins
         dao.insertOrUpdatePlayer(player.copy(coins = player.coins - item.price))
 
         // Add to inventory
-        val existing = dao.getInventoryItem(item.id)
         val targetEntity = if (existing != null) {
             val updated = existing.copy(quantity = existing.quantity + 1)
             dao.updateInventoryItem(updated)
@@ -755,3 +870,9 @@ class PetRepository(private val dao: PetDao) {
         initializeGameIfNeeded()
     }
 }
+
+data class InventorySanitizationResult(
+    val totalDuplicatesRemoved: Int,
+    val consolidatedItemIds: List<String>,
+    val itemsWithQuantityGreaterThanOne: Map<String, Int>
+)

@@ -80,23 +80,10 @@ fun HomeScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (pet.isSleeping) Color(0xFF0F172A) else Color.Transparent)
+            .background(if (pet.isSleeping) Color(0xFF0F172A) else MaterialTheme.colorScheme.background)
             .testTag("home_screen_container")
     ) {
         val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE || (maxWidth > maxHeight && maxWidth > 480.dp)
-
-        // Thematic Room Scenery Layer (Placed strictly at the background behind pet & UI)
-        androidx.compose.animation.Crossfade(
-            targetState = pet.roomTheme,
-            animationSpec = tween(600, easing = FastOutSlowInEasing),
-            label = "room_scenery_crossfade"
-        ) { theme ->
-            RoomSceneryRenderer(
-                themeId = theme,
-                isSleeping = pet.isSleeping,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
 
         if (isLandscape) {
             // Landscape Layout: Left sidebar (HUD & Stats) + Center/Right living pet stage & bottom care dock
@@ -426,6 +413,7 @@ private fun PetLivingStage(
 ) {
     BoxWithConstraints(
         modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
                     val normalizedX = ((offset.x / size.width) - 0.5f) * 200f
@@ -435,8 +423,82 @@ private fun PetLivingStage(
             .testTag("interactive_room_area"),
         contentAlignment = Alignment.Center
     ) {
+        // Thematic Room Scenery Layer (Rendered inside the living stage viewport)
+        androidx.compose.animation.Crossfade(
+            targetState = pet.roomTheme,
+            animationSpec = tween(600, easing = FastOutSlowInEasing),
+            label = "room_scenery_crossfade"
+        ) { theme ->
+            RoomSceneryRenderer(
+                themeId = theme,
+                isSleeping = pet.isSleeping,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
         val roomMaxOffsetX = (maxWidth.value / 2f) - 90f
         val clampedWalkX = autonomousState.walkOffsetX.coerceIn(-roomMaxOffsetX, roomMaxOffsetX).dp
+
+        val isSleeping = pet.isSleeping || autonomousState.behaviorState == PetBehaviorState.DORMINDO
+        val isBedroom = pet.roomTheme.isEmpty() || pet.roomTheme == "decor_bedroom"
+
+        // -----------------------------------------------------------------------------------------
+        // EXACT ROOM GEOMETRY & BED COORDINATE REFERENCES
+        // -----------------------------------------------------------------------------------------
+        val roomFloorY = maxHeight * 0.70f
+        val rugSurfaceY = roomFloorY + 2.dp
+
+        // Bed coordinates (strictly matching RoomSceneryRenderer geometry)
+        val bedW = (maxWidth * 0.38f).coerceIn(135.dp, 230.dp)
+        val bedH = (maxHeight * 0.30f).coerceIn(85.dp, 140.dp)
+        val bedX = maxWidth * 0.02f
+        val bedY = roomFloorY - bedH * 0.72f
+        val headboardW = bedW * 0.20f
+        val mattressX = bedX + headboardW * 0.5f
+        val mattressW = bedW - (headboardW * 0.5f)
+        val mattressY = bedY + bedH * 0.18f
+        val mattressH = bedH * 0.48f
+
+        // Mattress & Pillow Snuggle Center for Sleeping Pet
+        val bedCenterX = mattressX + mattressW * 0.44f
+        val bedCenterY = mattressY + mattressH * 0.36f
+
+        // Awake Position (Centered on living room rug with walking displacement)
+        val awakeX = (maxWidth / 2f) - (petSize / 2f) + clampedWalkX
+        val awakeY = rugSurfaceY - (petSize * 0.70f)
+
+        // Sleeping Position (Directly nestled on the bed mattress and pillow)
+        val sleepX = if (isBedroom) {
+            bedCenterX - (petSize / 2f)
+        } else {
+            (maxWidth / 2f) - (petSize / 2f)
+        }
+        val sleepY = if (isBedroom) {
+            bedCenterY - (petSize / 2f)
+        } else {
+            rugSurfaceY - (petSize * 0.70f)
+        }
+
+        // Smooth transition to the bed during sleep, and back to center rug upon waking
+        val targetPetX = if (isSleeping) sleepX else awakeX
+        val targetPetY = if (isSleeping) sleepY else awakeY
+
+        val animatedPetX by animateDpAsState(
+            targetValue = targetPetX,
+            animationSpec = tween(
+                durationMillis = if (autonomousState.behaviorState == PetBehaviorState.ACORDANDO) 1400 else 1100,
+                easing = FastOutSlowInEasing
+            ),
+            label = "pet_sleep_walk_x"
+        )
+        val animatedPetY by animateDpAsState(
+            targetValue = targetPetY,
+            animationSpec = tween(
+                durationMillis = if (autonomousState.behaviorState == PetBehaviorState.ACORDANDO) 1200 else 900,
+                easing = FastOutSlowInEasing
+            ),
+            label = "pet_sleep_walk_y"
+        )
 
         // Top State / Mood Pill
         Surface(
@@ -466,11 +528,14 @@ private fun PetLivingStage(
             }
         }
 
-        // Dynamic Speech & Thought Bubble
+        // Dynamic Speech & Thought Bubble (dynamically centered over the pet)
+        val bubbleX = (animatedPetX + (petSize / 2f) - 105.dp).coerceIn(8.dp, (maxWidth - 218.dp).coerceAtLeast(8.dp))
+        val bubbleY = (animatedPetY - 50.dp).coerceAtLeast(6.dp)
+
         Box(
             modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = clampedWalkX, y = (-110).dp)
+                .align(Alignment.TopStart)
+                .offset(x = bubbleX, y = bubbleY)
         ) {
             AnimatedVisibility(
                 visible = autonomousState.speechBubbleVisible && autonomousState.currentSpeechText.isNotBlank(),
@@ -485,7 +550,7 @@ private fun PetLivingStage(
                         shape = RoundedCornerShape(16.dp),
                         color = if (pet.isSleeping) Color(0xFF334155) else Color.White,
                         shadowElevation = 6.dp,
-                        modifier = Modifier.widthIn(max = 220.dp).testTag("thought_bubble")
+                        modifier = Modifier.widthIn(max = 210.dp).testTag("thought_bubble")
                     ) {
                         Text(
                             text = autonomousState.currentSpeechText,
@@ -511,8 +576,8 @@ private fun PetLivingStage(
         // Living Pet Avatar
         Box(
             modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = clampedWalkX, y = 6.dp)
+                .align(Alignment.TopStart)
+                .offset(x = animatedPetX, y = animatedPetY)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null

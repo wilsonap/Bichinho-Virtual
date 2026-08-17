@@ -11,7 +11,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import kotlin.math.cos
@@ -22,7 +21,8 @@ import kotlin.math.sin
  * for Bedroom (Quarto Aconchegante), Forest (Floresta Mágica), Beach (Praia Tropical),
  * and Space (Espaço Sideral).
  *
- * Scenery layers strictly sit behind the pet to keep the pet fully visible and centered.
+ * Scenery layers strictly sit inside the pet living stage boundaries,
+ * keeping the furniture perfectly framed and completely visible above all status panels.
  */
 @Composable
 fun RoomSceneryRenderer(
@@ -68,7 +68,7 @@ fun RoomSceneryRenderer(
 }
 
 // -------------------------------------------------------------------------------------------------
-// 1. QUARTO ACONCHEGANTE (Cozy Bedroom)
+// 1. QUARTO ACONCHEGANTE (Cozy Bedroom) - AUDITADO E REFORMULADO
 // -------------------------------------------------------------------------------------------------
 private fun DrawScope.drawCozyBedroomScene(
     w: Float,
@@ -77,13 +77,16 @@ private fun DrawScope.drawCozyBedroomScene(
     pulse: Float,
     isSleeping: Boolean
 ) {
-    val floorY = h * 0.68f
+    // 1. Linha de piso visual bem delineada (70% da altura para ancorar perfeitamente o bichinho e móveis)
+    val floorY = h * 0.70f
 
-    // Wall Background
+    // ---------------------------------------------------------------------------------------------
+    // PAREDE & PAPEL DE PAREDE
+    // ---------------------------------------------------------------------------------------------
     val wallGradient = if (isSleeping) {
         listOf(Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF334155))
     } else {
-        listOf(Color(0xFFFDF2F8), Color(0xFFFCE7F3), Color(0xFFF5D0FE))
+        listOf(Color(0xFFFFF7ED), Color(0xFFFDF2F8), Color(0xFFFCE7F3))
     }
     drawRect(
         brush = Brush.verticalGradient(wallGradient, startY = 0f, endY = floorY),
@@ -91,303 +94,782 @@ private fun DrawScope.drawCozyBedroomScene(
         size = Size(w, floorY)
     )
 
-    // Baseboard moulding strip
+    // Listras decorativas sutis na parede (painel clássico)
+    val stripeCount = 12
+    val stripeWidth = w / stripeCount
+    val stripeColor = if (isSleeping) Color(0xFF1E293B).copy(alpha = 0.35f) else Color(0xFFFBCFE8).copy(alpha = 0.25f)
+    for (i in 0 until stripeCount step 2) {
+        drawRect(
+            color = stripeColor,
+            topLeft = Offset(i * stripeWidth, 0f),
+            size = Size(stripeWidth, floorY)
+        )
+    }
+
+    // Moldura superior de teto (Crown Moulding)
     drawRect(
-        color = if (isSleeping) Color(0xFF1E293B) else Color(0xFFF1F5F9),
-        topLeft = Offset(0f, floorY - 14f),
-        size = Size(w, 14f)
+        color = if (isSleeping) Color(0xFF1E293B) else Color(0xFFFFFFFF),
+        topLeft = Offset(0f, 0f),
+        size = Size(w, 8f)
     )
     drawLine(
-        color = if (isSleeping) Color(0xFF334155) else Color(0xFFCBD5E1),
-        start = Offset(0f, floorY - 14f),
-        end = Offset(w, floorY - 14f),
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFFE2E8F0),
+        start = Offset(0f, 8f),
+        end = Offset(w, 8f),
         strokeWidth = 2f
     )
 
-    // Hardwood Floor with planks
-    val floorColorTop = if (isSleeping) Color(0xFF292524) else Color(0xFFDEB887)
-    val floorColorBottom = if (isSleeping) Color(0xFF1C1917) else Color(0xFFC49A6C)
+    // Rodapé clássico detalhado (Baseboard)
     drawRect(
-        brush = Brush.verticalGradient(listOf(floorColorTop, floorColorBottom), startY = floorY, endY = h),
+        color = if (isSleeping) Color(0xFF1E293B) else Color(0xFFF8FAFC),
+        topLeft = Offset(0f, floorY - 14f),
+        size = Size(w, 14f)
+    )
+    drawRect(
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFFFFFFFF),
+        topLeft = Offset(0f, floorY - 14f),
+        size = Size(w, 3f)
+    )
+    drawLine(
+        color = if (isSleeping) Color(0xFF0F172A) else Color(0xFFCBD5E1),
+        start = Offset(0f, floorY),
+        end = Offset(w, floorY),
+        strokeWidth = 2.5f
+    )
+
+    // ---------------------------------------------------------------------------------------------
+    // PISO DE MADEIRA (Hardwood parquet floor)
+    // ---------------------------------------------------------------------------------------------
+    val floorTop = if (isSleeping) Color(0xFF292524) else Color(0xFFDEB887)
+    val floorMid = if (isSleeping) Color(0xFF1C1917) else Color(0xFFC49A6C)
+    val floorBot = if (isSleeping) Color(0xFF0C0A09) else Color(0xFF9A744B)
+    drawRect(
+        brush = Brush.verticalGradient(listOf(floorTop, floorMid, floorBot), startY = floorY, endY = h),
         topLeft = Offset(0f, floorY),
         size = Size(w, h - floorY)
     )
 
-    // Floor wood plank lines (perspective)
-    val plankCount = 7
+    // Tábuas de madeira com perspectiva realista
+    val plankCount = 8
     for (i in 0..plankCount) {
-        val px = (w / plankCount) * i
+        val pxTop = (w / plankCount) * i
+        val pxBottom = (pxTop - w * 0.5f) * 1.18f + w * 0.5f
         drawLine(
-            color = if (isSleeping) Color(0xFF0C0A09).copy(alpha = 0.5f) else Color(0xFF8B5A2B).copy(alpha = 0.35f),
-            start = Offset(px, floorY),
-            end = Offset(px * 1.08f - (w * 0.04f), h),
-            strokeWidth = 2.5f
+            color = if (isSleeping) Color(0xFF0C0A09).copy(alpha = 0.5f) else Color(0xFF78350F).copy(alpha = 0.30f),
+            start = Offset(pxTop, floorY),
+            end = Offset(pxBottom, h),
+            strokeWidth = 2f
         )
     }
 
-    // Cozy Plush Rug in center under pet stage
-    val rugWidth = (w * 0.62f).coerceIn(240f, 480f)
-    val rugHeight = (h * 0.22f).coerceIn(90f, 160f)
-    val rugCenter = Offset(w * 0.5f, floorY + rugHeight * 0.45f)
+    // ---------------------------------------------------------------------------------------------
+    // JANELA AMPLIADA (Top-Left / Center-Left acima da cama)
+    // ---------------------------------------------------------------------------------------------
+    val winW = (w * 0.28f).coerceIn(90f, 150f)
+    val winH = winW * 1.15f
+    val winX = w * 0.07f
+    val winY = (h * 0.07f).coerceIn(12f, 36f)
 
-    // Rug shadow
+    // Sombra da janela na parede
+    drawRoundRect(
+        color = Color(0x1A000000),
+        topLeft = Offset(winX - 3f, winY - 3f),
+        size = Size(winW + 6f, winH + 10f),
+        cornerRadius = CornerRadius(8f, 8f)
+    )
+    // Moldura externa da janela
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFFFFFFFF),
+        topLeft = Offset(winX - 5f, winY - 5f),
+        size = Size(winW + 10f, winH + 10f),
+        cornerRadius = CornerRadius(6f, 6f)
+    )
+    // Parapeito da janela
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF475569) else Color(0xFFF1F5F9),
+        topLeft = Offset(winX - 10f, winY + winH - 2f),
+        size = Size(winW + 20f, 8f),
+        cornerRadius = CornerRadius(3f, 3f)
+    )
+
+    // Vidro da janela e Paisagem Externa
+    val skyBrush = if (isSleeping) {
+        Brush.verticalGradient(listOf(Color(0xFF020617), Color(0xFF0F172A), Color(0xFF1E293B)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF93C5FD), Color(0xFFFEF3C7)))
+    }
+    drawRoundRect(
+        brush = skyBrush,
+        topLeft = Offset(winX, winY),
+        size = Size(winW, winH),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+
+    // Elementos do Céu dentro da janela
+    if (isSleeping) {
+        // Céu Noturno: Estrelas cintilantes
+        val starAlpha1 = 0.5f + (pulse * 0.5f)
+        val starAlpha2 = 0.9f - (pulse * 0.4f)
+        drawCircle(Color.White.copy(alpha = starAlpha1), radius = 2f, center = Offset(winX + winW * 0.20f, winY + winH * 0.22f))
+        drawCircle(Color(0xFFFEF08A).copy(alpha = starAlpha2), radius = 2.5f, center = Offset(winX + winW * 0.45f, winY + winH * 0.15f))
+        drawCircle(Color.White.copy(alpha = starAlpha1), radius = 1.8f, center = Offset(winX + winW * 0.82f, winY + winH * 0.28f))
+        drawCircle(Color.White.copy(alpha = starAlpha2), radius = 2f, center = Offset(winX + winW * 0.28f, winY + winH * 0.48f))
+        drawCircle(Color(0xFFBAE6FD).copy(alpha = starAlpha1), radius = 1.5f, center = Offset(winX + winW * 0.60f, winY + winH * 0.40f))
+
+        // Lua Crescente brilhante com halo
+        val moonX = winX + winW * 0.70f
+        val moonY = winY + winH * 0.32f
+        val moonR = winW * 0.18f
+        // Halo suave
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(Color(0xFFFEF08A).copy(alpha = 0.25f), Color.Transparent),
+                center = Offset(moonX, moonY),
+                radius = moonR * 2.2f
+            ),
+            radius = moonR * 2.2f,
+            center = Offset(moonX, moonY)
+        )
+        // Lua
+        drawCircle(Color(0xFFFEF08A), radius = moonR, center = Offset(moonX, moonY))
+        drawCircle(Color(0xFF0F172A), radius = moonR * 0.85f, center = Offset(moonX - moonR * 0.35f, moonY - moonR * 0.15f))
+    } else {
+        // Céu Diurno: Colinas verdes ao fundo
+        val hillPath = Path().apply {
+            moveTo(winX, winY + winH)
+            lineTo(winX, winY + winH * 0.70f)
+            quadraticTo(winX + winW * 0.45f, winY + winH * 0.55f, winX + winW, winY + winH * 0.68f)
+            lineTo(winX + winW, winY + winH)
+            close()
+        }
+        drawPath(hillPath, color = Color(0xFF4ADE80))
+
+        // Sol radiante com corona
+        val sunX = winX + winW * 0.74f
+        val sunY = winY + winH * 0.30f
+        val sunR = winW * 0.18f
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(Color(0xFFFDE047).copy(alpha = 0.4f), Color.Transparent),
+                center = Offset(sunX, sunY),
+                radius = sunR * 1.8f
+            ),
+            radius = sunR * 1.8f,
+            center = Offset(sunX, sunY)
+        )
+        drawCircle(Color(0xFFFBBF24), radius = sunR, center = Offset(sunX, sunY))
+        drawCircle(Color(0xFFFDE047), radius = sunR * 0.75f, center = Offset(sunX - 2f, sunY - 2f))
+
+        // Nuvens fofinhas animadas flutuando suavemente
+        val cloudShift = (phase * 16f) % (winW * 0.5f)
+        val cloudX = winX + winW * 0.18f + cloudShift
+        val cloudY = winY + winH * 0.38f
+        drawCircle(Color.White.copy(alpha = 0.90f), radius = winW * 0.10f, center = Offset(cloudX, cloudY))
+        drawCircle(Color.White.copy(alpha = 0.90f), radius = winW * 0.13f, center = Offset(cloudX + winW * 0.10f, cloudY - 3f))
+        drawCircle(Color.White.copy(alpha = 0.90f), radius = winW * 0.09f, center = Offset(cloudX + winW * 0.20f, cloudY + 1f))
+    }
+
+    // Travessas da janela (4 painéis)
+    drawLine(
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFFE2E8F0),
+        start = Offset(winX + winW / 2, winY),
+        end = Offset(winX + winW / 2, winY + winH),
+        strokeWidth = 3f
+    )
+    drawLine(
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFFE2E8F0),
+        start = Offset(winX, winY + winH * 0.45f),
+        end = Offset(winX + winW, winY + winH * 0.45f),
+        strokeWidth = 3f
+    )
+
+    // Cortinas drapeadas nas laterais
+    val curtainColor = if (isSleeping) Color(0xFF475569) else Color(0xFFFBCFE8)
+    val curtainTieColor = if (isSleeping) Color(0xFF64748B) else Color(0xFFF472B6)
+    // Cortina esquerda
+    val leftCurtain = Path().apply {
+        moveTo(winX - 6f, winY - 4f)
+        lineTo(winX + winW * 0.20f, winY - 4f)
+        quadraticTo(winX + winW * 0.08f, winY + winH * 0.50f, winX + winW * 0.18f, winY + winH + 4f)
+        lineTo(winX - 6f, winY + winH + 4f)
+        close()
+    }
+    drawPath(leftCurtain, color = curtainColor)
+    drawRoundRect(
+        color = curtainTieColor,
+        topLeft = Offset(winX - 4f, winY + winH * 0.48f),
+        size = Size(winW * 0.14f, 5f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+
+    // Cortina direita
+    val rightCurtain = Path().apply {
+        moveTo(winX + winW + 6f, winY - 4f)
+        lineTo(winX + winW - winW * 0.20f, winY - 4f)
+        quadraticTo(winX + winW - winW * 0.08f, winY + winH * 0.50f, winX + winW - winW * 0.18f, winY + winH + 4f)
+        lineTo(winX + winW + 6f, winY + winH + 4f)
+        close()
+    }
+    drawPath(rightCurtain, color = curtainColor)
+    drawRoundRect(
+        color = curtainTieColor,
+        topLeft = Offset(winX + winW - winW * 0.10f, winY + winH * 0.48f),
+        size = Size(winW * 0.14f, 5f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+
+    // ---------------------------------------------------------------------------------------------
+    // QUADRO DECORATIVO NA PAREDE (Entre janela e estante)
+    // ---------------------------------------------------------------------------------------------
+    val frameX = w * 0.40f
+    val frameY = winY + 6f
+    val frameW = (w * 0.12f).coerceIn(38f, 65f)
+    val frameH = frameW * 1.1f
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF475569) else Color(0xFFB45309),
+        topLeft = Offset(frameX, frameY),
+        size = Size(frameW, frameH),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF1E293B) else Color(0xFFFFFBEB),
+        topLeft = Offset(frameX + 3f, frameY + 3f),
+        size = Size(frameW - 6f, frameH - 6f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+    // Mini ilustração de coração/pata no quadro
+    drawCircle(
+        color = if (isSleeping) Color(0xFF38BDF8) else Color(0xFFF43F5E),
+        radius = frameW * 0.18f,
+        center = Offset(frameX + frameW / 2, frameY + frameH / 2)
+    )
+
+    // ---------------------------------------------------------------------------------------------
+    // 2. CAMA ACONCHEGANTE (Aumentada em 200%, Lateral Esquerda)
+    // ---------------------------------------------------------------------------------------------
+    val bedW = (w * 0.38f).coerceIn(135f, 230f)
+    val bedH = (h * 0.30f).coerceIn(85f, 140f)
+    val bedX = w * 0.02f
+    val bedY = floorY - bedH * 0.72f
+
+    // Sombra da cama no piso
     drawOval(
-        color = Color(0x33000000),
-        topLeft = Offset(rugCenter.x - rugWidth / 2 - 4f, rugCenter.y - rugHeight / 2 + 6f),
+        color = Color(0x35000000),
+        topLeft = Offset(bedX - 4f, floorY - 6f),
+        size = Size(bedW + 12f, 16f)
+    )
+
+    // Cabeceira da cama de madeira nobre (Headboard)
+    val headboardW = bedW * 0.20f
+    val headboardH = bedH * 1.05f
+    val woodDark = if (isSleeping) Color(0xFF292524) else Color(0xFF78350F)
+    val woodMedium = if (isSleeping) Color(0xFF44403C) else Color(0xFF92400E)
+    val woodLight = if (isSleeping) Color(0xFF57534E) else Color(0xFFB45309)
+
+    // Postes da cabeceira
+    drawRoundRect(
+        color = woodDark,
+        topLeft = Offset(bedX, bedY - headboardH * 0.25f),
+        size = Size(10f, headboardH),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+    drawCircle(
+        color = woodLight,
+        radius = 7f,
+        center = Offset(bedX + 5f, bedY - headboardH * 0.25f)
+    )
+
+    // Painel principal da cabeceira
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(woodLight, woodMedium, woodDark)),
+        topLeft = Offset(bedX + 4f, bedY - headboardH * 0.20f),
+        size = Size(headboardW, headboardH * 0.85f),
+        cornerRadius = CornerRadius(6f, 6f)
+    )
+    // Detalhes entalhados da cabeceira
+    for (panel in 1..2) {
+        val px = bedX + 4f + (headboardW / 3f) * panel
+        drawLine(
+            color = woodDark,
+            start = Offset(px, bedY - headboardH * 0.18f),
+            end = Offset(px, bedY + headboardH * 0.50f),
+            strokeWidth = 2f
+        )
+    }
+
+    // Estrutura / Base de madeira da cama
+    drawRoundRect(
+        color = woodMedium,
+        topLeft = Offset(bedX + 6f, bedY + bedH * 0.35f),
+        size = Size(bedW - 6f, bedH * 0.45f),
+        cornerRadius = CornerRadius(6f, 6f)
+    )
+    // Pés de apoio da cama
+    drawRoundRect(
+        color = woodDark,
+        topLeft = Offset(bedX + 8f, floorY - 12f),
+        size = Size(8f, 14f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+    drawRoundRect(
+        color = woodDark,
+        topLeft = Offset(bedX + bedW - 14f, floorY - 12f),
+        size = Size(8f, 14f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+
+    // Colchão espesso e macio (Plush White Mattress)
+    val mattressX = bedX + headboardW * 0.5f
+    val mattressW = bedW - (headboardW * 0.5f)
+    val mattressY = bedY + bedH * 0.18f
+    val mattressH = bedH * 0.48f
+
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFFF8FAFC),
+        topLeft = Offset(mattressX, mattressY),
+        size = Size(mattressW, mattressH),
+        cornerRadius = CornerRadius(8f, 8f)
+    )
+    // Borda/costura do colchão
+    drawLine(
+        color = if (isSleeping) Color(0xFF475569) else Color(0xFFE2E8F0),
+        start = Offset(mattressX + 4f, mattressY + mattressH * 0.35f),
+        end = Offset(mattressX + mattressW - 4f, mattressY + mattressH * 0.35f),
+        strokeWidth = 2f
+    )
+
+    // Travesseiro Duplo Macio (Double Fluffy Pillows)
+    val pillowW = mattressW * 0.28f
+    val pillowH = mattressH * 0.52f
+    val pillowX = mattressX + 6f
+    val pillowY = mattressY + 4f
+
+    // Travesseiro de trás (sombra)
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+        topLeft = Offset(pillowX + 2f, pillowY - 4f),
+        size = Size(pillowW, pillowH),
+        cornerRadius = CornerRadius(6f, 6f)
+    )
+    // Travesseiro frontal
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF475569) else Color(0xFFFFFFFF),
+        topLeft = Offset(pillowX, pillowY),
+        size = Size(pillowW, pillowH),
+        cornerRadius = CornerRadius(7f, 7f)
+    )
+    // Dobra/afundamento central do travesseiro
+    drawOval(
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFFF1F5F9),
+        topLeft = Offset(pillowX + pillowW * 0.30f, pillowY + pillowH * 0.30f),
+        size = Size(pillowW * 0.40f, pillowH * 0.40f)
+    )
+
+    // Edredom / Cobertor Aconchegante (Quilt / Duvet)
+    val quiltX = mattressX + pillowW * 0.65f
+    val quiltW = mattressW - (pillowW * 0.65f) + 4f
+    val quiltY = mattressY + 2f
+    val quiltH = mattressH + 2f
+    val quiltColor = if (isSleeping) Color(0xFF1E3A8A) else Color(0xFF818CF8)
+    val quiltDark = if (isSleeping) Color(0xFF172554) else Color(0xFF6366F1)
+    val quiltFoldColor = if (isSleeping) Color(0xFF38BDF8) else Color(0xFFC7D2FE)
+
+    // Corpo do edredom
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(quiltColor, quiltDark)),
+        topLeft = Offset(quiltX, quiltY),
+        size = Size(quiltW, quiltH),
+        cornerRadius = CornerRadius(8f, 8f)
+    )
+    // Dobra do lençol no topo do cobertor
+    drawRoundRect(
+        color = quiltFoldColor,
+        topLeft = Offset(quiltX - 2f, quiltY),
+        size = Size(12f, quiltH),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+    // Detalhes acolchoados / pespontos diagonais no edredom
+    drawLine(
+        color = quiltFoldColor.copy(alpha = 0.35f),
+        start = Offset(quiltX + quiltW * 0.35f, quiltY + 4f),
+        end = Offset(quiltX + quiltW * 0.85f, quiltY + quiltH - 4f),
+        strokeWidth = 2f
+    )
+    drawLine(
+        color = quiltFoldColor.copy(alpha = 0.35f),
+        start = Offset(quiltX + quiltW * 0.60f, quiltY + 4f),
+        end = Offset(quiltX + quiltW * 0.98f, quiltY + quiltH * 0.70f),
+        strokeWidth = 2f
+    )
+
+    // Criado-Mudo com reloginho despertador (À esquerda da cabeceira)
+    val woodStandColor = if (isSleeping) Color(0xFF1C1917) else Color(0xFF92400E)
+    drawRoundRect(
+        color = woodStandColor,
+        topLeft = Offset(bedX + 2f, floorY - 24f),
+        size = Size(16f, 24f),
+        cornerRadius = CornerRadius(3f, 3f)
+    )
+    // Mini relógio despertador
+    drawCircle(
+        color = if (isSleeping) Color(0xFF38BDF8) else Color(0xFFEF4444),
+        radius = 4.5f,
+        center = Offset(bedX + 10f, floorY - 28f)
+    )
+
+    // ---------------------------------------------------------------------------------------------
+    // 3. TAPETE CENTRALIZADO (Plush Rug sob o bichinho)
+    // ---------------------------------------------------------------------------------------------
+    val rugWidth = (w * 0.46f).coerceIn(150f, 290f)
+    val rugHeight = (h * 0.16f).coerceIn(40f, 72f)
+    val rugCenter = Offset(w * 0.5f, floorY + rugHeight * 0.30f)
+
+    // Sombra do tapete no chão
+    drawOval(
+        color = Color(0x38000000),
+        topLeft = Offset(rugCenter.x - rugWidth / 2 - 4f, rugCenter.y - rugHeight / 2 + 3f),
         size = Size(rugWidth + 8f, rugHeight + 4f)
     )
-    // Outer rug
+    // Camada externa do tapete
     drawOval(
         color = if (isSleeping) Color(0xFF475569) else Color(0xFFFBCFE8),
         topLeft = Offset(rugCenter.x - rugWidth / 2, rugCenter.y - rugHeight / 2),
         size = Size(rugWidth, rugHeight)
     )
-    // Inner pattern rug
+    // Camada intermediária com tom rosa suave/índigo
     drawOval(
         color = if (isSleeping) Color(0xFF334155) else Color(0xFFF472B6),
         topLeft = Offset(rugCenter.x - rugWidth * 0.42f, rugCenter.y - rugHeight * 0.42f),
         size = Size(rugWidth * 0.84f, rugHeight * 0.84f)
     )
+    // Camada interna macia
     drawOval(
         color = if (isSleeping) Color(0xFF1E293B) else Color(0xFFFFF1F2),
-        topLeft = Offset(rugCenter.x - rugWidth * 0.34f, rugCenter.y - rugHeight * 0.34f),
-        size = Size(rugWidth * 0.68f, rugHeight * 0.68f)
+        topLeft = Offset(rugCenter.x - rugWidth * 0.32f, rugCenter.y - rugHeight * 0.32f),
+        size = Size(rugWidth * 0.64f, rugHeight * 0.64f)
     )
-
-    // Window with scenery outside (Top Left)
-    val winWidth = (w * 0.22f).coerceIn(80f, 130f)
-    val winHeight = (h * 0.24f).coerceIn(90f, 140f)
-    val winX = w * 0.06f
-    val winY = h * 0.10f
-
-    // Window frame
-    drawRoundRect(
-        color = if (isSleeping) Color(0xFF334155) else Color(0xFFE2E8F0),
-        topLeft = Offset(winX - 6f, winY - 6f),
-        size = Size(winWidth + 12f, winHeight + 12f),
-        cornerRadius = CornerRadius(8f, 8f)
-    )
-    // Outside sky glass
-    val glassBrush = if (isSleeping) {
-        Brush.verticalGradient(listOf(Color(0xFF090D16), Color(0xFF1E293B)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFF60A5FA), Color(0xFFBAE6FD), Color(0xFFFEF3C7)))
-    }
-    drawRoundRect(
-        brush = glassBrush,
-        topLeft = Offset(winX, winY),
-        size = Size(winWidth, winHeight),
-        cornerRadius = CornerRadius(6f, 6f)
-    )
-    // Sun or Moon in window
-    if (isSleeping) {
-        // Crescent moon
+    // Detalhes pontilhados de franja nas bordas
+    val fringeCount = 14
+    for (f in 0 until fringeCount) {
+        val angle = (f / fringeCount.toFloat()) * 6.28318f
+        val fx = rugCenter.x + cos(angle) * (rugWidth * 0.48f)
+        val fy = rugCenter.y + sin(angle) * (rugHeight * 0.48f)
         drawCircle(
-            color = Color(0xFFFEF08A),
-            radius = winWidth * 0.16f,
-            center = Offset(winX + winWidth * 0.72f, winY + winHeight * 0.35f)
-        )
-        drawCircle(
-            color = Color(0xFF090D16),
-            radius = winWidth * 0.14f,
-            center = Offset(winX + winWidth * 0.66f, winY + winHeight * 0.32f)
-        )
-    } else {
-        // Warm sun
-        drawCircle(
-            color = Color(0xFFFBBF24),
-            radius = winWidth * 0.18f,
-            center = Offset(winX + winWidth * 0.75f, winY + winHeight * 0.32f)
-        )
-        // Little cloud
-        drawCircle(
-            color = Color.White.copy(alpha = 0.85f),
-            radius = winWidth * 0.12f,
-            center = Offset(winX + winWidth * 0.35f, winY + winHeight * 0.55f)
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.85f),
-            radius = winWidth * 0.15f,
-            center = Offset(winX + winWidth * 0.50f, winY + winHeight * 0.52f)
+            color = if (isSleeping) Color(0xFF64748B) else Color(0xFFFDA4AF),
+            radius = 2f,
+            center = Offset(fx, fy)
         )
     }
-    // Window mullions (cross panes)
-    drawLine(
-        color = if (isSleeping) Color(0xFF334155) else Color(0xFFCBD5E1),
-        start = Offset(winX + winWidth / 2, winY),
-        end = Offset(winX + winWidth / 2, winY + winHeight),
-        strokeWidth = 3f
-    )
-    drawLine(
-        color = if (isSleeping) Color(0xFF334155) else Color(0xFFCBD5E1),
-        start = Offset(winX, winY + winHeight / 2),
-        end = Offset(winX + winWidth, winY + winHeight / 2),
-        strokeWidth = 3f
-    )
 
-    // Wall Art (Picture Frames on Top Right)
-    val frameX = w * 0.74f
-    val frameY = h * 0.11f
-    val frameW = (w * 0.18f).coerceIn(60f, 100f)
-    val frameH = frameW * 0.8f
-    // Frame border
-    drawRoundRect(
-        color = if (isSleeping) Color(0xFF475569) else Color(0xFFB45309),
-        topLeft = Offset(frameX, frameY),
-        size = Size(frameW, frameH),
-        cornerRadius = CornerRadius(6f, 6f)
-    )
-    // Canvas inside frame
-    drawRoundRect(
-        color = if (isSleeping) Color(0xFF1E293B) else Color(0xFFFEF3C7),
-        topLeft = Offset(frameX + 4f, frameY + 4f),
-        size = Size(frameW - 8f, frameH - 8f),
-        cornerRadius = CornerRadius(4f, 4f)
-    )
-    // Heart/Star inside picture
-    drawCircle(
-        color = if (isSleeping) Color(0xFF38BDF8) else Color(0xFFF43F5E),
-        radius = frameW * 0.16f,
-        center = Offset(frameX + frameW / 2, frameY + frameH / 2)
-    )
+    // ---------------------------------------------------------------------------------------------
+    // 4. ESTANTE DE LIVROS AMPLIADA (Bookshelf na Extrema Direita)
+    // ---------------------------------------------------------------------------------------------
+    val shelfX = w * 0.79f
+    val shelfW = (w * 0.19f).coerceIn(65f, 105f)
+    val shelfH = (h * 0.45f).coerceIn(120f, 190f)
+    val shelfY = floorY - shelfH
 
-    // Bookshelf (Right Wall)
-    val shelfX = w * 0.82f
-    val shelfY = floorY - (h * 0.28f).coerceIn(110f, 170f)
-    val shelfW = (w * 0.14f).coerceIn(50f, 85f)
-    val shelfH = floorY - shelfY
-    // Shelf frame
+    // Sombra da estante no chão
+    drawOval(
+        color = Color(0x30000000),
+        topLeft = Offset(shelfX - 3f, floorY - 4f),
+        size = Size(shelfW + 6f, 10f)
+    )
+    // Estrutura principal da estante (Corpo de madeira nobre)
     drawRoundRect(
-        color = if (isSleeping) Color(0xFF292524) else Color(0xFF92400E),
+        color = if (isSleeping) Color(0xFF1C1917) else Color(0xFF78350F),
         topLeft = Offset(shelfX, shelfY),
         size = Size(shelfW, shelfH),
-        cornerRadius = CornerRadius(6f, 6f)
+        cornerRadius = CornerRadius(5f, 5f)
     )
-    // Shelf planks & books
-    val shelfLevels = 3
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF292524) else Color(0xFF92400E),
+        topLeft = Offset(shelfX + 3f, shelfY + 3f),
+        size = Size(shelfW - 6f, shelfH - 6f),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+
+    // Prateleiras internas (4 níveis)
+    val shelfLevels = 4
+    val bookPalette = listOf(
+        Color(0xFFEF4444), // Vermelho
+        Color(0xFF3B82F6), // Azul
+        Color(0xFF10B981), // Verde
+        Color(0xFFF59E0B), // Âmbar
+        Color(0xFF8B5CF6), // Roxo
+        Color(0xFFEC4899), // Rosa
+        Color(0xFF14B8A6)  // Turquesa
+    )
+
     for (s in 1 until shelfLevels) {
         val sy = shelfY + (shelfH / shelfLevels) * s
-        drawLine(
+        // Prancha de madeira da prateleira
+        drawRect(
             color = if (isSleeping) Color(0xFF44403C) else Color(0xFFB45309),
-            start = Offset(shelfX + 4f, sy),
-            end = Offset(shelfX + shelfW - 4f, sy),
-            strokeWidth = 3f
+            topLeft = Offset(shelfX + 2f, sy),
+            size = Size(shelfW - 4f, 4f)
         )
-        // Colorful book spines
-        val bookColors = listOf(Color(0xFFEF4444), Color(0xFF3B82F6), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFF8B5CF6))
-        for (b in 0..3) {
-            val bx = shelfX + 8f + (b * 9f)
-            val bh = (shelfH / shelfLevels) * 0.65f
-            if (bx + 7f < shelfX + shelfW - 4f) {
+
+        // Livros enfileirados em cada prateleira
+        val booksInShelf = 3 + (s % 2)
+        val maxBookHeight = (shelfH / shelfLevels) * 0.70f
+
+        for (b in 0 until booksInShelf) {
+            val bookW = 6.5f
+            val bx = shelfX + 6f + (b * (bookW + 2f))
+            val bh = maxBookHeight * (0.75f + ((b * 37) % 30) / 100f)
+            val bColor = bookPalette[(s * 3 + b) % bookPalette.size]
+
+            if (bx + bookW < shelfX + shelfW - 4f) {
+                // Livro com lombada e título dourado/claro
                 drawRoundRect(
-                    color = if (isSleeping) bookColors[b % bookColors.size].copy(alpha = 0.5f) else bookColors[b % bookColors.size],
+                    color = if (isSleeping) bColor.copy(alpha = 0.55f) else bColor,
                     topLeft = Offset(bx, sy - bh),
-                    size = Size(7f, bh),
-                    cornerRadius = CornerRadius(2f, 2f)
+                    size = Size(bookW, bh),
+                    cornerRadius = CornerRadius(1.5f, 1.5f)
+                )
+                drawLine(
+                    color = if (isSleeping) Color(0xFF94A3B8) else Color(0xFFFEF08A),
+                    start = Offset(bx + 1.5f, sy - bh + 3f),
+                    end = Offset(bx + bookW - 1.5f, sy - bh + 3f),
+                    strokeWidth = 1f
                 )
             }
         }
     }
 
-    // Cozy Bed with Pillow and Blanket (Left Background)
-    val bedW = (w * 0.28f).coerceIn(95f, 160f)
-    val bedH = (h * 0.20f).coerceIn(75f, 120f)
-    val bedX = w * 0.04f
-    val bedY = floorY - bedH * 0.70f
+    // Topo da Estante: Vasinho com Planta Pendente (Jiboia) & Troféu Dourado
+    val potX = shelfX + 8f
+    val potY = shelfY - 12f
+    // Vaso de cerâmica
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF475569) else Color(0xFFEA580C),
+        topLeft = Offset(potX, potY),
+        size = Size(14f, 12f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+    // Folhinhas verdes pendentes caindo pela lateral
+    val plantGreen = if (isSleeping) Color(0xFF065F46) else Color(0xFF22C55E)
+    drawCircle(plantGreen, radius = 5f, center = Offset(potX + 4f, potY - 2f))
+    drawCircle(plantGreen, radius = 6f, center = Offset(potX + 11f, potY - 3f))
+    drawCircle(plantGreen, radius = 4f, center = Offset(potX - 3f, potY + 6f))
+    drawCircle(plantGreen, radius = 3.5f, center = Offset(potX - 4f, potY + 14f))
 
-    // Bed shadow
+    // Mini Troféu de ouro no topo direito da estante
+    val trophyX = shelfX + shelfW - 16f
     drawRoundRect(
-        color = Color(0x2A000000),
-        topLeft = Offset(bedX - 2f, floorY - 6f),
-        size = Size(bedW + 8f, 16f),
-        cornerRadius = CornerRadius(8f, 8f)
-    )
-    // Headboard
-    drawRoundRect(
-        color = if (isSleeping) Color(0xFF44403C) else Color(0xFFB45309),
-        topLeft = Offset(bedX, bedY - 18f),
-        size = Size(bedW * 0.22f, bedH + 18f),
-        cornerRadius = CornerRadius(6f, 6f)
-    )
-    // Mattress Base
-    drawRoundRect(
-        color = if (isSleeping) Color(0xFF334155) else Color(0xFFF8FAFC),
-        topLeft = Offset(bedX + 8f, bedY + bedH * 0.2f),
-        size = Size(bedW - 8f, bedH * 0.65f),
-        cornerRadius = CornerRadius(8f, 8f)
-    )
-    // Quilt / Blanket
-    drawRoundRect(
-        color = if (isSleeping) Color(0xFF1E3A8A) else Color(0xFF818CF8),
-        topLeft = Offset(bedX + bedW * 0.32f, bedY + bedH * 0.2f),
-        size = Size(bedW * 0.68f - 4f, bedH * 0.65f),
-        cornerRadius = CornerRadius(8f, 8f)
-    )
-    // Fluffy Pillow
-    drawRoundRect(
-        color = if (isSleeping) Color(0xFFE2E8F0).copy(alpha = 0.6f) else Color.White,
-        topLeft = Offset(bedX + bedW * 0.12f, bedY + bedH * 0.15f),
-        size = Size(bedW * 0.24f, bedH * 0.38f),
-        cornerRadius = CornerRadius(6f, 6f)
+        color = if (isSleeping) Color(0xFF94A3B8) else Color(0xFFFBBF24),
+        topLeft = Offset(trophyX, shelfY - 14f),
+        size = Size(10f, 14f),
+        cornerRadius = CornerRadius(2f, 2f)
     )
 
-    // Desk + Desk Lamp (Right-Middle)
-    val deskX = w * 0.68f
-    val deskY = floorY - (h * 0.15f).coerceIn(60f, 95f)
-    val deskW = (w * 0.15f).coerceIn(55f, 85f)
-    val deskH = floorY - deskY
-    // Desk tabletop
+    // ---------------------------------------------------------------------------------------------
+    // 5. ESCRIVANINHA AMPLIADA + CADEIRA + LIVROS + ABAJUR (Entre Tapete e Estante)
+    // ---------------------------------------------------------------------------------------------
+    val deskW = (w * 0.22f).coerceIn(75f, 120f)
+    val deskH = (h * 0.24f).coerceIn(65f, 98f)
+    val deskX = shelfX - deskW - (w * 0.02f)
+    val deskY = floorY - deskH
+
+    // Sombra da escrivaninha e cadeira no chão
+    drawOval(
+        color = Color(0x32000000),
+        topLeft = Offset(deskX - 4f, floorY - 5f),
+        size = Size(deskW + 10f, 12f)
+    )
+
+    // Tampo reforçado da escrivaninha
     drawRoundRect(
-        color = if (isSleeping) Color(0xFF3E2723) else Color(0xFFD97706),
+        color = if (isSleeping) Color(0xFF292524) else Color(0xFFB45309),
         topLeft = Offset(deskX, deskY),
         size = Size(deskW, 10f),
         cornerRadius = CornerRadius(4f, 4f)
     )
-    // Desk legs
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF44403C) else Color(0xFFD97706),
+        topLeft = Offset(deskX + 2f, deskY + 1f),
+        size = Size(deskW - 4f, 4f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+
+    // Pés de suporte da escrivaninha (lado esquerdo)
     drawLine(
-        color = if (isSleeping) Color(0xFF292524) else Color(0xFFB45309),
-        start = Offset(deskX + 6f, deskY + 10f),
-        end = Offset(deskX + 6f, floorY),
+        color = if (isSleeping) Color(0xFF1C1917) else Color(0xFF78350F),
+        start = Offset(deskX + 5f, deskY + 10f),
+        end = Offset(deskX + 5f, floorY),
         strokeWidth = 4f
     )
-    drawLine(
-        color = if (isSleeping) Color(0xFF292524) else Color(0xFFB45309),
-        start = Offset(deskX + deskW - 6f, deskY + 10f),
-        end = Offset(deskX + deskW - 6f, floorY),
-        strokeWidth = 4f
+
+    // Gaveteiro com 2 gavetas (lado direito da mesa)
+    val drawerW = deskW * 0.38f
+    val drawerX = deskX + deskW - drawerW - 3f
+    val drawerH = deskH * 0.70f
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF292524) else Color(0xFF92400E),
+        topLeft = Offset(drawerX, deskY + 10f),
+        size = Size(drawerW, drawerH),
+        cornerRadius = CornerRadius(3f, 3f)
     )
-    // Lamp base + pole
-    val lampX = deskX + deskW * 0.5f
-    val lampY = deskY - 26f
+    // 2 Gavetas com puxadores de metal dourado
+    for (d in 0..1) {
+        val dy = deskY + 12f + (d * (drawerH * 0.48f))
+        drawRoundRect(
+            color = if (isSleeping) Color(0xFF44403C) else Color(0xFFB45309),
+            topLeft = Offset(drawerX + 2f, dy),
+            size = Size(drawerW - 4f, drawerH * 0.42f),
+            cornerRadius = CornerRadius(2f, 2f)
+        )
+        // Puxador de latão
+        drawCircle(
+            color = if (isSleeping) Color(0xFF94A3B8) else Color(0xFFF59E0B),
+            radius = 2.5f,
+            center = Offset(drawerX + drawerW / 2, dy + drawerH * 0.21f)
+        )
+    }
+
+    // Cadeira de Estudo (Study Chair posicionada na frente da escrivaninha)
+    val chairX = deskX + deskW * 0.10f
+    val chairW = deskW * 0.42f
+    val chairSeatY = floorY - deskH * 0.48f
+
+    // Pés da cadeira
     drawLine(
-        color = if (isSleeping) Color(0xFF64748B) else Color(0xFF475569),
-        start = Offset(lampX, deskY),
-        end = Offset(lampX, lampY),
+        color = if (isSleeping) Color(0xFF1C1917) else Color(0xFF78350F),
+        start = Offset(chairX + 4f, chairSeatY + 6f),
+        end = Offset(chairX + 4f, floorY),
         strokeWidth = 3f
     )
-    // Lamp Shade
+    drawLine(
+        color = if (isSleeping) Color(0xFF1C1917) else Color(0xFF78350F),
+        start = Offset(chairX + chairW - 4f, chairSeatY + 6f),
+        end = Offset(chairX + chairW - 4f, floorY),
+        strokeWidth = 3f
+    )
+    // Assento estofado da cadeira
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF475569) else Color(0xFFF43F5E),
+        topLeft = Offset(chairX, chairSeatY),
+        size = Size(chairW, 7f),
+        cornerRadius = CornerRadius(3f, 3f)
+    )
+    // Encosto de madeira da cadeira
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF292524) else Color(0xFF92400E),
+        topLeft = Offset(chairX + 2f, chairSeatY - deskH * 0.35f),
+        size = Size(chairW - 4f, 6f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+    // Barras verticais do encosto
+    for (spindle in 1..2) {
+        val spX = chairX + 2f + ((chairW - 4f) / 3f) * spindle
+        drawLine(
+            color = if (isSleeping) Color(0xFF292524) else Color(0xFF92400E),
+            start = Offset(spX, chairSeatY - deskH * 0.35f + 6f),
+            end = Offset(spX, chairSeatY),
+            strokeWidth = 2f
+        )
+    }
+
+    // Acessórios na mesa: Notebook aberto + Caneca de café fumegante
+    val laptopX = deskX + 8f
+    val laptopY = deskY - 14f
+    // Base do notebook
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFF94A3B8),
+        topLeft = Offset(laptopX, deskY - 3f),
+        size = Size(18f, 3f),
+        cornerRadius = CornerRadius(1f, 1f)
+    )
+    // Tela iluminada
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF1E293B) else Color(0xFF38BDF8),
+        topLeft = Offset(laptopX + 2f, laptopY),
+        size = Size(14f, 11f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+
+    // Caneca com vapor
+    val mugX = deskX + 30f
+    val mugY = deskY - 9f
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF475569) else Color(0xFFEF4444),
+        topLeft = Offset(mugX, mugY),
+        size = Size(7f, 9f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+    // Vapor subindo da caneca
+    if (!isSleeping) {
+        val steamAlpha = 0.4f + (pulse * 0.4f)
+        drawLine(
+            color = Color.White.copy(alpha = steamAlpha),
+            start = Offset(mugX + 3.5f, mugY - 2f),
+            end = Offset(mugX + 5f, mugY - 7f),
+            strokeWidth = 1.5f
+        )
+    }
+
+    // Abajur Clássico (Desk Lamp)
+    val lampX = deskX + deskW * 0.72f
+    val lampBaseY = deskY
+    val lampTopY = deskY - 24f
+
+    // Base redonda do abajur
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF64748B) else Color(0xFFD97706),
+        topLeft = Offset(lampX - 7f, lampBaseY - 3f),
+        size = Size(14f, 3f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
+    // Haste metálica
+    drawLine(
+        color = if (isSleeping) Color(0xFF94A3B8) else Color(0xFFF59E0B),
+        start = Offset(lampX, lampBaseY - 3f),
+        end = Offset(lampX, lampTopY + 8f),
+        strokeWidth = 3f
+    )
+
+    // Cúpula cônica do abajur (Shade)
     val shadePath = Path().apply {
-        moveTo(lampX - 12f, lampY + 10f)
-        lineTo(lampX + 12f, lampY + 10f)
-        lineTo(lampX + 6f, lampY)
-        lineTo(lampX - 6f, lampY)
+        moveTo(lampX - 11f, lampTopY + 9f)
+        lineTo(lampX + 11f, lampTopY + 9f)
+        lineTo(lampX + 6f, lampTopY)
+        lineTo(lampX - 6f, lampTopY)
         close()
     }
     drawPath(
         path = shadePath,
-        color = if (isSleeping) Color(0xFFF59E0B).copy(alpha = 0.7f) else Color(0xFFF59E0B)
+        color = if (isSleeping) Color(0xFFF59E0B).copy(alpha = 0.9f) else Color(0xFFF59E0B)
     )
-    // Warm Lamp Light glow
-    val lampGlowAlpha = if (isSleeping) 0.18f + (pulse * 0.08f) else 0.35f
+
+    // Iluminação radiante aconchegante do Abajur (Luz Dourada suave com pulsação)
+    val glowAlpha = if (isSleeping) 0.32f + (pulse * 0.12f) else 0.22f + (pulse * 0.06f)
+    val glowRadius = if (isSleeping) 65f else 50f
     drawCircle(
         brush = Brush.radialGradient(
-            listOf(Color(0xFFFEF08A).copy(alpha = lampGlowAlpha), Color.Transparent),
-            center = Offset(lampX, lampY + 8f),
-            radius = 65f
+            listOf(Color(0xFFFEF08A).copy(alpha = glowAlpha), Color(0xFFFDE047).copy(alpha = glowAlpha * 0.4f), Color.Transparent),
+            center = Offset(lampX, lampTopY + 8f),
+            radius = glowRadius
         ),
-        radius = 65f,
-        center = Offset(lampX, lampY + 8f)
+        radius = glowRadius,
+        center = Offset(lampX, lampTopY + 8f)
     )
+
+    // ---------------------------------------------------------------------------------------------
+    // ILUMINAÇÃO NOTURNA GERAL (Quando isSleeping == true)
+    // ---------------------------------------------------------------------------------------------
+    if (isSleeping) {
+        // Suave vinheta azulada noturna no quarto, mantendo o aconchego
+        drawRect(
+            brush = Brush.verticalGradient(
+                listOf(Color(0x22020617), Color(0x350F172A), Color(0x450F172A)),
+                startY = 0f,
+                endY = h
+            ),
+            topLeft = Offset(0f, 0f),
+            size = Size(w, h)
+        )
+    }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -400,9 +882,8 @@ private fun DrawScope.drawMagicForestScene(
     pulse: Float,
     isSleeping: Boolean
 ) {
-    val groundY = h * 0.65f
+    val groundY = h * 0.70f
 
-    // Enchanted Forest Sky
     val forestSky = if (isSleeping) {
         listOf(Color(0xFF022C22), Color(0xFF064E3B), Color(0xFF065F46))
     } else {
@@ -434,9 +915,9 @@ private fun DrawScope.drawMagicForestScene(
 
     // Distant tree silhouettes / hills
     val hillPath = Path().apply {
-        moveTo(0f, groundY - 20f)
-        quadraticBezierTo(w * 0.25f, groundY - 70f, w * 0.5f, groundY - 30f)
-        quadraticBezierTo(w * 0.75f, groundY - 65f, w, groundY - 25f)
+        moveTo(0f, groundY - 15f)
+        quadraticBezierTo(w * 0.25f, groundY - 45f, w * 0.5f, groundY - 20f)
+        quadraticBezierTo(w * 0.75f, groundY - 45f, w, groundY - 15f)
         lineTo(w, groundY)
         lineTo(0f, groundY)
         close()
@@ -446,56 +927,44 @@ private fun DrawScope.drawMagicForestScene(
         color = if (isSleeping) Color(0xFF064E3B).copy(alpha = 0.6f) else Color(0xFF34D399).copy(alpha = 0.5f)
     )
 
-    // Magical Forest Canopy Trees (Left & Right background)
     // Left Big Tree
-    val trunkLeftX = w * 0.08f
+    val trunkLeftX = w * 0.06f
     drawRoundRect(
         color = if (isSleeping) Color(0xFF1C1917) else Color(0xFF78350F),
-        topLeft = Offset(trunkLeftX, groundY - 140f),
-        size = Size(26f, 150f),
-        cornerRadius = CornerRadius(8f, 8f)
+        topLeft = Offset(trunkLeftX, groundY - 110f),
+        size = Size(20f, 120f),
+        cornerRadius = CornerRadius(6f, 6f)
     )
-    // Left Tree Foliage clusters (Animated sway)
-    val swayLeft = sin(phase) * 6f
+    val swayLeft = sin(phase) * 5f
     drawCircle(
         color = if (isSleeping) Color(0xFF065F46) else Color(0xFF059669),
-        radius = 55f,
-        center = Offset(trunkLeftX + 13f + swayLeft, groundY - 140f)
+        radius = 42f,
+        center = Offset(trunkLeftX + 10f + swayLeft, groundY - 110f)
     )
     drawCircle(
         color = if (isSleeping) Color(0xFF047857) else Color(0xFF10B981),
-        radius = 45f,
-        center = Offset(trunkLeftX - 18f + swayLeft, groundY - 120f)
-    )
-    drawCircle(
-        color = if (isSleeping) Color(0xFF0F766E) else Color(0xFF34D399),
-        radius = 48f,
-        center = Offset(trunkLeftX + 35f + swayLeft, groundY - 110f)
+        radius = 35f,
+        center = Offset(trunkLeftX - 14f + swayLeft, groundY - 95f)
     )
 
     // Right Big Tree
-    val trunkRightX = w * 0.84f
+    val trunkRightX = w * 0.86f
     drawRoundRect(
         color = if (isSleeping) Color(0xFF1C1917) else Color(0xFF78350F),
-        topLeft = Offset(trunkRightX, groundY - 160f),
-        size = Size(30f, 170f),
-        cornerRadius = CornerRadius(8f, 8f)
+        topLeft = Offset(trunkRightX, groundY - 120f),
+        size = Size(22f, 130f),
+        cornerRadius = CornerRadius(6f, 6f)
     )
-    val swayRight = cos(phase) * 6f
+    val swayRight = cos(phase) * 5f
     drawCircle(
         color = if (isSleeping) Color(0xFF065F46) else Color(0xFF059669),
-        radius = 60f,
-        center = Offset(trunkRightX + 15f + swayRight, groundY - 160f)
+        radius = 45f,
+        center = Offset(trunkRightX + 11f + swayRight, groundY - 120f)
     )
     drawCircle(
         color = if (isSleeping) Color(0xFF047857) else Color(0xFF10B981),
-        radius = 50f,
-        center = Offset(trunkRightX + 40f + swayRight, groundY - 135f)
-    )
-    drawCircle(
-        color = if (isSleeping) Color(0xFF0F766E) else Color(0xFF34D399),
-        radius = 52f,
-        center = Offset(trunkRightX - 22f + swayRight, groundY - 130f)
+        radius = 38f,
+        center = Offset(trunkRightX + 28f + swayRight, groundY - 100f)
     )
 
     // Forest Mossy Ground
@@ -511,67 +980,55 @@ private fun DrawScope.drawMagicForestScene(
     )
 
     // Grass Tuft Details along the floor
-    for (i in 0..12) {
-        val gx = (w / 12f) * i + (sin(i.toFloat()) * 14f)
-        val gy = groundY + (i % 3) * 6f
+    for (i in 0..10) {
+        val gx = (w / 10f) * i + (sin(i.toFloat()) * 10f)
+        val gy = groundY + (i % 3) * 4f
         val grassColor = if (isSleeping) Color(0xFF34D399).copy(alpha = 0.4f) else Color(0xFF6EE7B7)
         drawLine(
             color = grassColor,
             start = Offset(gx, gy),
-            end = Offset(gx - 4f, gy - 12f),
-            strokeWidth = 2.5f,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = grassColor,
-            start = Offset(gx + 3f, gy),
-            end = Offset(gx + 5f, gy - 14f),
-            strokeWidth = 2.5f,
+            end = Offset(gx - 3f, gy - 8f),
+            strokeWidth = 2f,
             cap = StrokeCap.Round
         )
     }
 
     // Magic Glowing Mushrooms (Left Floor)
-    val mush1X = w * 0.18f
-    val mush1Y = groundY + (h * 0.08f)
-    // Stem
+    val mush1X = w * 0.16f
+    val mush1Y = groundY + (h * 0.12f)
     drawRoundRect(
         color = Color(0xFFF1F5F9),
-        topLeft = Offset(mush1X - 4f, mush1Y - 14f),
-        size = Size(8f, 16f),
-        cornerRadius = CornerRadius(3f, 3f)
+        topLeft = Offset(mush1X - 3f, mush1Y - 10f),
+        size = Size(6f, 12f),
+        cornerRadius = CornerRadius(2f, 2f)
     )
-    // Mushroom Cap
     drawArc(
         color = Color(0xFFEF4444),
         startAngle = 180f,
         sweepAngle = 180f,
         useCenter = true,
-        topLeft = Offset(mush1X - 16f, mush1Y - 26f),
-        size = Size(32f, 26f)
+        topLeft = Offset(mush1X - 12f, mush1Y - 20f),
+        size = Size(24f, 20f)
     )
-    // White polka dots
-    drawCircle(color = Color.White, radius = 2.5f, center = Offset(mush1X - 6f, mush1Y - 18f))
-    drawCircle(color = Color.White, radius = 2.5f, center = Offset(mush1X + 5f, mush1Y - 19f))
-    drawCircle(color = Color.White, radius = 2.5f, center = Offset(mush1X, mush1Y - 23f))
-    // Mushroom glow aura
+    drawCircle(color = Color.White, radius = 2f, center = Offset(mush1X - 4f, mush1Y - 14f))
+    drawCircle(color = Color.White, radius = 2f, center = Offset(mush1X + 4f, mush1Y - 15f))
     drawCircle(
         brush = Brush.radialGradient(
             listOf(Color(0xFFFCA5A5).copy(alpha = 0.4f * pulse), Color.Transparent),
-            center = Offset(mush1X, mush1Y - 16f),
-            radius = 35f
+            center = Offset(mush1X, mush1Y - 12f),
+            radius = 26f
         ),
-        radius = 35f,
-        center = Offset(mush1X, mush1Y - 16f)
+        radius = 26f,
+        center = Offset(mush1X, mush1Y - 12f)
     )
 
     // Smaller Cyan Magic Mushroom (Right Floor)
-    val mush2X = w * 0.78f
-    val mush2Y = groundY + (h * 0.12f)
+    val mush2X = w * 0.80f
+    val mush2Y = groundY + (h * 0.14f)
     drawRoundRect(
         color = Color(0xFFF1F5F9),
-        topLeft = Offset(mush2X - 3f, mush2Y - 10f),
-        size = Size(6f, 12f),
+        topLeft = Offset(mush2X - 2.5f, mush2Y - 8f),
+        size = Size(5f, 10f),
         cornerRadius = CornerRadius(2f, 2f)
     )
     drawArc(
@@ -579,67 +1036,42 @@ private fun DrawScope.drawMagicForestScene(
         startAngle = 180f,
         sweepAngle = 180f,
         useCenter = true,
-        topLeft = Offset(mush2X - 12f, mush2Y - 20f),
-        size = Size(24f, 20f)
+        topLeft = Offset(mush2X - 9f, mush2Y - 16f),
+        size = Size(18f, 16f)
     )
-    drawCircle(color = Color.White, radius = 2f, center = Offset(mush2X - 3f, mush2Y - 14f))
-    drawCircle(color = Color.White, radius = 2f, center = Offset(mush2X + 4f, mush2Y - 15f))
+    drawCircle(color = Color.White, radius = 1.5f, center = Offset(mush2X - 2f, mush2Y - 11f))
+    drawCircle(color = Color.White, radius = 1.5f, center = Offset(mush2X + 3f, mush2Y - 12f))
     drawCircle(
         brush = Brush.radialGradient(
             listOf(Color(0xFF67E8F9).copy(alpha = 0.45f * pulse), Color.Transparent),
-            center = Offset(mush2X, mush2Y - 12f),
-            radius = 30f
+            center = Offset(mush2X, mush2Y - 10f),
+            radius = 22f
         ),
-        radius = 30f,
-        center = Offset(mush2X, mush2Y - 12f)
+        radius = 22f,
+        center = Offset(mush2X, mush2Y - 10f)
     )
 
-    // Forest Wildflowers (Yellow & Purple)
-    val flowerColors = listOf(Color(0xFFFBBF24), Color(0xFFA855F7), Color(0xFFF472B6))
-    for (f in 0..4) {
-        val fx = w * (0.28f + (f * 0.12f))
-        val fy = groundY + 20f + ((f % 2) * 18f)
-        val col = flowerColors[f % flowerColors.size]
-        drawCircle(color = col, radius = 4f, center = Offset(fx, fy))
-        drawCircle(color = Color(0xFFFEF08A), radius = 1.5f, center = Offset(fx, fy))
-    }
-
-    // Animated Floating Fireflies / Magic Spores
-    val fireflyCount = 9
+    // Animated Floating Fireflies
+    val fireflyCount = 7
     for (i in 0 until fireflyCount) {
-        val fx = ((w * (0.1f + (i * 0.09f))) + sin(phase + i * 1.2f) * 22f) % w
-        val fy = ((h * (0.25f + ((i % 5) * 0.09f))) + cos(phase + i * 0.9f) * 16f)
+        val fx = ((w * (0.1f + (i * 0.12f))) + sin(phase + i * 1.2f) * 16f) % w
+        val fy = ((h * (0.25f + ((i % 4) * 0.12f))) + cos(phase + i * 0.9f) * 12f)
         val fireflyGlow = (sin(phase * 2f + i) + 1f) / 2f
 
         drawCircle(
             color = Color(0xFFFEF08A).copy(alpha = 0.85f * fireflyGlow),
-            radius = 3f,
+            radius = 2.5f,
             center = Offset(fx, fy)
         )
         drawCircle(
             brush = Brush.radialGradient(
                 listOf(Color(0xFFFDE047).copy(alpha = 0.4f * fireflyGlow), Color.Transparent),
                 center = Offset(fx, fy),
-                radius = 16f
+                radius = 12f
             ),
-            radius = 16f,
+            radius = 12f,
             center = Offset(fx, fy)
         )
-    }
-
-    // Drifting animated leaves
-    for (l in 0..2) {
-        val lx = (w * (0.3f + l * 0.25f) + cos(phase + l) * 28f)
-        val ly = (h * (0.15f + l * 0.18f) + sin(phase + l * 1.5f) * 15f)
-        rotate(degrees = (phase * 40f + l * 60f) % 360f, pivot = Offset(lx, ly)) {
-            val leafPath = Path().apply {
-                moveTo(lx, ly - 8f)
-                quadraticBezierTo(lx + 6f, ly, lx, ly + 8f)
-                quadraticBezierTo(lx - 6f, ly, lx, ly - 8f)
-                close()
-            }
-            drawPath(path = leafPath, color = Color(0xFF34D399).copy(alpha = 0.65f))
-        }
     }
 }
 
@@ -654,9 +1086,8 @@ private fun DrawScope.drawTropicalBeachScene(
     isSleeping: Boolean
 ) {
     val horizonY = h * 0.38f
-    val shoreY = h * 0.58f
+    val shoreY = h * 0.62f
 
-    // Tropical Sky
     val skyBrush = if (isSleeping) {
         Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF1E3A8A)), startY = 0f, endY = horizonY)
     } else {
@@ -672,37 +1103,18 @@ private fun DrawScope.drawTropicalBeachScene(
     if (isSleeping) {
         drawCircle(
             color = Color(0xFFFEF08A),
-            radius = 24f,
-            center = Offset(w * 0.75f, horizonY * 0.55f)
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(Color(0xFFFEF08A).copy(alpha = 0.25f), Color.Transparent),
-                center = Offset(w * 0.75f, horizonY * 0.55f),
-                radius = 60f
-            ),
-            radius = 60f,
+            radius = 18f,
             center = Offset(w * 0.75f, horizonY * 0.55f)
         )
     } else {
-        // Bright tropical sun with radiating lens
         drawCircle(
             color = Color(0xFFFBBF24),
-            radius = 32f,
-            center = Offset(w * 0.25f, horizonY * 0.50f)
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(Color(0xFFFEF08A).copy(alpha = 0.45f), Color.Transparent),
-                center = Offset(w * 0.25f, horizonY * 0.50f),
-                radius = 80f
-            ),
-            radius = 80f,
+            radius = 24f,
             center = Offset(w * 0.25f, horizonY * 0.50f)
         )
     }
 
-    // Ocean Water (Horizon to Shore)
+    // Ocean Water
     val seaBrush = if (isSleeping) {
         Brush.verticalGradient(listOf(Color(0xFF1E3A8A), Color(0xFF172554), Color(0xFF0F172A)), startY = horizonY, endY = shoreY)
     } else {
@@ -715,31 +1127,18 @@ private fun DrawScope.drawTropicalBeachScene(
     )
 
     // Animated Ocean Waves
-    val waveOffset1 = sin(phase) * 8f
-    val waveOffset2 = cos(phase) * 10f
-
+    val waveOffset1 = sin(phase) * 6f
     val wavePath1 = Path().apply {
-        moveTo(0f, shoreY - 14f + waveOffset1)
-        quadraticBezierTo(w * 0.25f, shoreY - 24f - waveOffset1, w * 0.5f, shoreY - 14f + waveOffset1)
-        quadraticBezierTo(w * 0.75f, shoreY - 4f - waveOffset1, w, shoreY - 14f + waveOffset1)
+        moveTo(0f, shoreY - 10f + waveOffset1)
+        quadraticBezierTo(w * 0.25f, shoreY - 18f - waveOffset1, w * 0.5f, shoreY - 10f + waveOffset1)
+        quadraticBezierTo(w * 0.75f, shoreY - 2f - waveOffset1, w, shoreY - 10f + waveOffset1)
         lineTo(w, shoreY)
         lineTo(0f, shoreY)
         close()
     }
     drawPath(path = wavePath1, color = Color(0xFF7DD3FC).copy(alpha = 0.5f))
 
-    // Wave Foam / Crest (Animated shoreline)
-    val foamPath = Path().apply {
-        moveTo(0f, shoreY + waveOffset2)
-        quadraticBezierTo(w * 0.3f, shoreY - 10f + waveOffset2, w * 0.6f, shoreY + 4f + waveOffset2)
-        quadraticBezierTo(w * 0.85f, shoreY - 8f + waveOffset2, w, shoreY + waveOffset2)
-        lineTo(w, shoreY + 12f)
-        lineTo(0f, shoreY + 12f)
-        close()
-    }
-    drawPath(path = foamPath, color = Color.White.copy(alpha = 0.75f))
-
-    // Golden Sand Beach (Shore to bottom)
+    // Golden Sand Beach
     val sandBrush = if (isSleeping) {
         Brush.verticalGradient(listOf(Color(0xFF44403C), Color(0xFF292524), Color(0xFF1C1917)), startY = shoreY, endY = h)
     } else {
@@ -747,25 +1146,23 @@ private fun DrawScope.drawTropicalBeachScene(
     }
     drawRect(
         brush = sandBrush,
-        topLeft = Offset(0f, shoreY + 8f),
-        size = Size(w, h - (shoreY + 8f))
+        topLeft = Offset(0f, shoreY),
+        size = Size(w, h - shoreY)
     )
 
-    // Beach Umbrella (Right Side Background)
+    // Beach Umbrella (Right Side)
     val umbX = w * 0.82f
-    val umbY = shoreY + (h * 0.06f)
-    val umbW = (w * 0.20f).coerceIn(70f, 110f)
-    val umbH = umbW * 0.7f
+    val umbY = shoreY + (h * 0.04f)
+    val umbW = (w * 0.18f).coerceIn(55f, 85f)
+    val umbH = umbW * 0.65f
 
-    // Umbrella pole
     drawLine(
         color = if (isSleeping) Color(0xFF94A3B8) else Color(0xFFCBD5E1),
         start = Offset(umbX, umbY),
-        end = Offset(umbX - 8f, umbY + (h * 0.18f)),
-        strokeWidth = 4f,
+        end = Offset(umbX - 6f, umbY + (h * 0.18f)),
+        strokeWidth = 3f,
         cap = StrokeCap.Round
     )
-    // Umbrella Canopy (Red & White stripes)
     drawArc(
         color = Color(0xFFEF4444),
         startAngle = 180f,
@@ -774,7 +1171,6 @@ private fun DrawScope.drawTropicalBeachScene(
         topLeft = Offset(umbX - umbW / 2, umbY - umbH),
         size = Size(umbW, umbH * 2)
     )
-    // White middle stripe
     drawArc(
         color = Color.White,
         startAngle = 220f,
@@ -783,51 +1179,30 @@ private fun DrawScope.drawTropicalBeachScene(
         topLeft = Offset(umbX - umbW * 0.35f, umbY - umbH),
         size = Size(umbW * 0.7f, umbH * 2)
     )
-    // Red core
-    drawArc(
-        color = Color(0xFFEF4444),
-        startAngle = 250f,
-        sweepAngle = 40f,
-        useCenter = true,
-        topLeft = Offset(umbX - umbW * 0.18f, umbY - umbH),
-        size = Size(umbW * 0.36f, umbH * 2)
-    )
 
-    // Palm Tree (Left Side Background)
-    val palmX = w * 0.08f
+    // Palm Tree (Left Side)
+    val palmX = w * 0.07f
     val palmY = shoreY + (h * 0.14f)
-    val palmTop = Offset(palmX + (w * 0.08f), shoreY - (h * 0.22f))
+    val palmTop = Offset(palmX + (w * 0.07f), shoreY - (h * 0.18f))
 
-    // Curved Trunk
     val trunkPath = Path().apply {
         moveTo(palmX, palmY)
-        quadraticBezierTo(palmX + (w * 0.02f), palmY - (h * 0.18f), palmTop.x, palmTop.y)
+        quadraticBezierTo(palmX + (w * 0.015f), palmY - (h * 0.14f), palmTop.x, palmTop.y)
     }
     drawPath(
         path = trunkPath,
         color = if (isSleeping) Color(0xFF292524) else Color(0xFF78350F),
-        style = Stroke(width = 16f, cap = StrokeCap.Round)
+        style = Stroke(width = 12f, cap = StrokeCap.Round)
     )
-    // Trunk rings
-    for (r in 1..5) {
-        val rx = palmX + (palmTop.x - palmX) * (r / 6f)
-        val ry = palmY + (palmTop.y - palmY) * (r / 6f)
-        drawCircle(
-            color = if (isSleeping) Color(0xFF44403C) else Color(0xFF92400E),
-            radius = 7f,
-            center = Offset(rx, ry)
-        )
-    }
 
-    // Palm Fronds / Leaves (Animated sway with wind)
-    val palmSway = sin(phase) * 5f
+    val palmSway = sin(phase) * 4f
     val frondAngles = listOf(-60f, -20f, 20f, 60f, 100f, 140f)
     for (angle in frondAngles) {
         rotate(degrees = angle + palmSway, pivot = palmTop) {
             val frondPath = Path().apply {
                 moveTo(palmTop.x, palmTop.y)
-                quadraticBezierTo(palmTop.x + 40f, palmTop.y - 18f, palmTop.x + 75f, palmTop.y + 12f)
-                quadraticBezierTo(palmTop.x + 35f, palmTop.y + 4f, palmTop.x, palmTop.y)
+                quadraticBezierTo(palmTop.x + 30f, palmTop.y - 14f, palmTop.x + 55f, palmTop.y + 10f)
+                quadraticBezierTo(palmTop.x + 25f, palmTop.y + 3f, palmTop.x, palmTop.y)
                 close()
             }
             drawPath(
@@ -836,45 +1211,6 @@ private fun DrawScope.drawTropicalBeachScene(
             )
         }
     }
-
-    // Seashells and Starfish on the Sand (Floor)
-    // Pink Starfish (Left)
-    val starX = w * 0.25f
-    val starY = shoreY + (h * 0.22f)
-    drawCircle(color = Color(0xFFF43F5E), radius = 6f, center = Offset(starX, starY))
-    for (a in 0..4) {
-        val rad = Math.toRadians((a * 72.0) - 90.0)
-        val armX = starX + (cos(rad) * 11.0).toFloat()
-        val armY = starY + (sin(rad) * 11.0).toFloat()
-        drawLine(
-            color = Color(0xFFF43F5E),
-            start = Offset(starX, starY),
-            end = Offset(armX, armY),
-            strokeWidth = 3.5f,
-            cap = StrokeCap.Round
-        )
-    }
-
-    // White / Gold Seashell (Right)
-    val shellX = w * 0.65f
-    val shellY = shoreY + (h * 0.26f)
-    drawArc(
-        color = Color(0xFFFFFBEB),
-        startAngle = 180f,
-        sweepAngle = 180f,
-        useCenter = true,
-        topLeft = Offset(shellX - 8f, shellY - 12f),
-        size = Size(16f, 14f)
-    )
-    drawArc(
-        color = Color(0xFFD97706),
-        startAngle = 180f,
-        sweepAngle = 180f,
-        useCenter = false,
-        topLeft = Offset(shellX - 8f, shellY - 12f),
-        size = Size(16f, 14f),
-        style = Stroke(width = 1.5f)
-    )
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -887,7 +1223,6 @@ private fun DrawScope.drawOuterSpaceScene(
     pulse: Float,
     isSleeping: Boolean
 ) {
-    // Deep Space Background
     val spaceBrush = Brush.verticalGradient(
         listOf(Color(0xFF030712), Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF311042)),
         startY = 0f,
@@ -899,7 +1234,6 @@ private fun DrawScope.drawOuterSpaceScene(
         size = Size(w, h)
     )
 
-    // Swirling Nebula Dust Clouds (Purple & Cyan)
     val nebAlpha = 0.22f + (pulse * 0.08f)
     drawCircle(
         brush = Brush.radialGradient(
@@ -910,60 +1244,33 @@ private fun DrawScope.drawOuterSpaceScene(
         radius = w * 0.45f,
         center = Offset(w * 0.25f, h * 0.30f)
     )
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(Color(0xFF38BDF8).copy(alpha = nebAlpha * 0.8f), Color.Transparent),
-            center = Offset(w * 0.75f, h * 0.65f),
-            radius = w * 0.40f
-        ),
-        radius = w * 0.40f,
-        center = Offset(w * 0.75f, h * 0.65f)
-    )
 
-    // Star Field (Twinkling stars with procedural positions)
+    // Star Field
     val starCoords = listOf(
         Pair(0.08f, 0.12f), Pair(0.18f, 0.06f), Pair(0.32f, 0.18f),
         Pair(0.48f, 0.08f), Pair(0.62f, 0.14f), Pair(0.78f, 0.05f),
         Pair(0.92f, 0.18f), Pair(0.12f, 0.42f), Pair(0.88f, 0.38f),
-        Pair(0.15f, 0.72f), Pair(0.85f, 0.78f), Pair(0.06f, 0.88f),
-        Pair(0.35f, 0.85f), Pair(0.68f, 0.88f), Pair(0.94f, 0.92f)
+        Pair(0.15f, 0.72f), Pair(0.85f, 0.78f)
     )
 
     for ((idx, coord) in starCoords.withIndex()) {
         val sx = w * coord.first
         val sy = h * coord.second
         val starPulse = (sin(phase * 2.5f + idx * 0.9f) + 1f) / 2f
-        val starRadius = if (idx % 3 == 0) 3f + (starPulse * 1.5f) else 1.8f + (starPulse * 0.8f)
+        val starRadius = if (idx % 3 == 0) 2.5f + (starPulse * 1.2f) else 1.5f + (starPulse * 0.6f)
 
         drawCircle(
             color = Color.White.copy(alpha = 0.6f + (starPulse * 0.4f)),
             radius = starRadius,
             center = Offset(sx, sy)
         )
-        // 4-point twinkle sparkle on larger stars
-        if (idx % 4 == 0) {
-            val sparkLen = 7f + (starPulse * 4f)
-            drawLine(
-                color = Color.White.copy(alpha = 0.7f * starPulse),
-                start = Offset(sx - sparkLen, sy),
-                end = Offset(sx + sparkLen, sy),
-                strokeWidth = 1.5f
-            )
-            drawLine(
-                color = Color.White.copy(alpha = 0.7f * starPulse),
-                start = Offset(sx, sy - sparkLen),
-                end = Offset(sx, sy + sparkLen),
-                strokeWidth = 1.5f
-            )
-        }
     }
 
-    // Giant Ringed Planet (Saturn-like in Top Left)
-    val planet1X = w * 0.18f
-    val planet1Y = h * 0.18f
-    val planet1R = (w * 0.08f).coerceIn(28f, 44f)
+    // Giant Ringed Planet (Top Left)
+    val planet1X = w * 0.16f
+    val planet1Y = h * 0.16f
+    val planet1R = (w * 0.07f).coerceIn(22f, 36f)
 
-    // Planet body
     drawCircle(
         brush = Brush.radialGradient(
             listOf(Color(0xFFFDE047), Color(0xFFF59E0B), Color(0xFFB45309)),
@@ -973,120 +1280,29 @@ private fun DrawScope.drawOuterSpaceScene(
         radius = planet1R,
         center = Offset(planet1X, planet1Y)
     )
-    // Planet Planetary Ring
     rotate(degrees = -25f, pivot = Offset(planet1X, planet1Y)) {
         drawOval(
             color = Color(0xFFFDE68A).copy(alpha = 0.8f),
             topLeft = Offset(planet1X - planet1R * 1.8f, planet1Y - planet1R * 0.35f),
             size = Size(planet1R * 3.6f, planet1R * 0.7f),
-            style = Stroke(width = 5f)
-        )
-        drawOval(
-            color = Color(0xFFF59E0B).copy(alpha = 0.5f),
-            topLeft = Offset(planet1X - planet1R * 2.1f, planet1Y - planet1R * 0.45f),
-            size = Size(planet1R * 4.2f, planet1R * 0.9f),
-            style = Stroke(width = 3f)
-        )
-    }
-
-    // Moon / Terra Planet (Top Right)
-    val planet2X = w * 0.82f
-    val planet2Y = h * 0.22f
-    val planet2R = (w * 0.06f).coerceIn(20f, 32f)
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(Color(0xFF67E8F9), Color(0xFF0284C7), Color(0xFF0F172A)),
-            center = Offset(planet2X - planet2R * 0.25f, planet2Y - planet2R * 0.25f),
-            radius = planet2R * 1.2f
-        ),
-        radius = planet2R,
-        center = Offset(planet2X, planet2Y)
-    )
-
-    // Animated Floating Satellite / Space Station (Drifting slowly)
-    val satX = (w * 0.76f) + (cos(phase * 0.7f) * 15f)
-    val satY = (h * 0.42f) + (sin(phase * 0.7f) * 10f)
-
-    // Satellite Core
-    drawRoundRect(
-        color = Color(0xFFE2E8F0),
-        topLeft = Offset(satX - 7f, satY - 7f),
-        size = Size(14f, 14f),
-        cornerRadius = CornerRadius(3f, 3f)
-    )
-    // Solar Panels (Left & Right)
-    drawRoundRect(
-        color = Color(0xFF38BDF8),
-        topLeft = Offset(satX - 26f, satY - 5f),
-        size = Size(16f, 10f),
-        cornerRadius = CornerRadius(2f, 2f)
-    )
-    drawRoundRect(
-        color = Color(0xFF38BDF8),
-        topLeft = Offset(satX + 10f, satY - 5f),
-        size = Size(16f, 10f),
-        cornerRadius = CornerRadius(2f, 2f)
-    )
-    // Antenna blinking red LED
-    val ledAlpha = if (pulse > 0.6f) 1f else 0.2f
-    drawCircle(color = Color(0xFFEF4444).copy(alpha = ledAlpha), radius = 2.5f, center = Offset(satX, satY - 10f))
-
-    // Animated Shooting Star / Comet across the sky
-    val cometProgress = (phase / (2f * Math.PI.toFloat()))
-    val cometStartX = w * 0.9f - (cometProgress * w * 1.2f)
-    val cometStartY = h * 0.05f + (cometProgress * h * 0.35f)
-    val cometLen = 45f
-
-    if (cometProgress in 0.1f..0.85f) {
-        drawLine(
-            brush = Brush.linearGradient(
-                listOf(Color.White, Color(0xFF67E8F9), Color.Transparent),
-                start = Offset(cometStartX, cometStartY),
-                end = Offset(cometStartX + cometLen, cometStartY - (cometLen * 0.45f))
-            ),
-            start = Offset(cometStartX, cometStartY),
-            end = Offset(cometStartX + cometLen, cometStartY - (cometLen * 0.45f)),
-            strokeWidth = 3f,
-            cap = StrokeCap.Round
+            style = Stroke(width = 4f)
         )
     }
 
     // Lunar/Asteroid Surface Platform (Bottom Stage for the pet)
-    val floorY = h * 0.70f
+    val floorY = h * 0.74f
     val surfacePath = Path().apply {
-        moveTo(0f, floorY + 10f)
-        quadraticBezierTo(w * 0.25f, floorY - 12f, w * 0.5f, floorY)
-        quadraticBezierTo(w * 0.75f, floorY + 12f, w, floorY - 5f)
+        moveTo(0f, floorY + 8f)
+        quadraticBezierTo(w * 0.25f, floorY - 10f, w * 0.5f, floorY)
+        quadraticBezierTo(w * 0.75f, floorY + 10f, w, floorY - 4f)
         lineTo(w, h)
         lineTo(0f, h)
         close()
     }
     val surfaceBrush = Brush.verticalGradient(
         listOf(Color(0xFF475569), Color(0xFF334155), Color(0xFF1E293B)),
-        startY = floorY - 12f,
+        startY = floorY - 10f,
         endY = h
     )
     drawPath(path = surfacePath, brush = surfaceBrush)
-
-    // Lunar Craters
-    val craters = listOf(
-        Pair(0.18f, floorY + 35f),
-        Pair(0.42f, floorY + 55f),
-        Pair(0.72f, floorY + 30f),
-        Pair(0.88f, floorY + 60f)
-    )
-    for ((cxRel, cy) in craters) {
-        val cx = w * cxRel
-        drawOval(
-            color = Color(0xFF1E293B),
-            topLeft = Offset(cx - 16f, cy - 8f),
-            size = Size(32f, 16f)
-        )
-        drawOval(
-            color = Color(0xFF64748B).copy(alpha = 0.6f),
-            topLeft = Offset(cx - 14f, cy - 6f),
-            size = Size(28f, 12f),
-            style = Stroke(width = 2f)
-        )
-    }
 }

@@ -126,6 +126,10 @@ class GameAudioManager private constructor(private val appContext: Context) {
         lastPlayTimes[sfx] = now
 
         val soundId = soundMap[sfx] ?: return
+        if (!loadedSoundIds.contains(soundId)) {
+            // Sound sample is still loading asynchronously in SoundPool
+            return
+        }
         val volume = _sfxVolume.value.coerceIn(0f, 1f)
 
         try {

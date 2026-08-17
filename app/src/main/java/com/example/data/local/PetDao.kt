@@ -32,6 +32,12 @@ interface PetDao {
     @Query("SELECT * FROM inventory")
     fun getInventoryFlow(): Flow<List<InventoryEntity>>
 
+    @Query("SELECT * FROM inventory")
+    suspend fun getAllInventoryList(): List<InventoryEntity>
+
+    @Query("SELECT COUNT(*) FROM inventory")
+    suspend fun getInventoryCount(): Int
+
     @Query("SELECT * FROM inventory WHERE itemId = :itemId LIMIT 1")
     suspend fun getInventoryItem(itemId: String): InventoryEntity?
 

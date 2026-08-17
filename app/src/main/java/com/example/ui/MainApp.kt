@@ -10,7 +10,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -146,7 +149,8 @@ fun MainApp(
         bottomBar = {
             if (!isPlayingGame) {
                 NavigationBar(
-                    modifier = Modifier.testTag("bottom_nav_bar")
+                    modifier = Modifier.testTag("bottom_nav_bar"),
+                    tonalElevation = 4.dp
                 ) {
                     val visibleItems = listOf(
                         Screen.Home,
@@ -161,8 +165,20 @@ fun MainApp(
                         val isSelected = currentRoute == screen.route
                         NavigationBarItem(
                             icon = { screen.icon(isSelected) },
-                            label = { Text(screen.title, style = MaterialTheme.typography.labelSmall) },
+                            label = {
+                                Text(
+                                    text = screen.title,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                )
+                            },
                             selected = isSelected,
+                            alwaysShowLabel = false,
                             onClick = {
                                 if (currentRoute != screen.route) {
                                     viewModel.playUiClick()

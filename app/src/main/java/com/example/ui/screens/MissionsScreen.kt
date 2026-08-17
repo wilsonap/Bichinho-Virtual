@@ -27,7 +27,7 @@ fun MissionsScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("Missões Diárias", fontWeight = FontWeight.Bold) }
             )
         }

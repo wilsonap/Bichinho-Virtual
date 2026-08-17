@@ -28,7 +28,7 @@ fun AchievementsScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("Conquistas & Troféus", fontWeight = FontWeight.Bold) }
             )
         }

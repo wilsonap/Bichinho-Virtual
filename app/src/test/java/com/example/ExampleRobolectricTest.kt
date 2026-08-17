@@ -30,5 +30,37 @@ class ExampleRobolectricTest {
     assertNotNull(PetBehaviorState.COM_SAUDADE.displayName)
     assertNotNull(PetBehaviorState.BOCEJANDO.displayName)
   }
+
+  @Test
+  fun `test inventory consolidation logic`() {
+    val rawList = listOf(
+        com.example.data.local.InventoryEntity(id = 1, itemId = "toy_ball", category = "BRINQUEDO", name = "Bola Saltitante", quantity = 1),
+        com.example.data.local.InventoryEntity(id = 2, itemId = "toy_ball", category = "BRINQUEDO", name = "Bola Saltitante", quantity = 1),
+        com.example.data.local.InventoryEntity(id = 3, itemId = "decor_bedroom", category = "DECORACAO", name = "Quarto", quantity = 1, isEquipped = true),
+        com.example.data.local.InventoryEntity(id = 4, itemId = "decor_bedroom", category = "DECORACAO", name = "Quarto", quantity = 1, isEquipped = true),
+        com.example.data.local.InventoryEntity(id = 5, itemId = "decor_bedroom", category = "DECORACAO", name = "Quarto", quantity = 1, isEquipped = true),
+        com.example.data.local.InventoryEntity(id = 6, itemId = "food_cookie", category = "ALIMENTO", name = "Biscoito Doce", quantity = 2),
+        com.example.data.local.InventoryEntity(id = 7, itemId = "food_cookie", category = "ALIMENTO", name = "Biscoito Doce", quantity = 2)
+    )
+
+    val consolidated = rawList.groupBy { it.itemId }.values.map { group ->
+        val first = group.first()
+        val isReusable = first.category in listOf("BRINQUEDO", "ROUPA", "ACESSORIO", "DECORACAO")
+        val totalQty = if (isReusable) 1 else group.sumOf { it.quantity }
+        val equipped = group.any { it.isEquipped }
+        first.copy(quantity = totalQty, isEquipped = equipped)
+    }
+
+    assertEquals(3, consolidated.size)
+    val ball = consolidated.find { it.itemId == "toy_ball" }
+    assertEquals(1, ball?.quantity)
+
+    val decor = consolidated.find { it.itemId == "decor_bedroom" }
+    assertEquals(1, decor?.quantity)
+    assertEquals(true, decor?.isEquipped)
+
+    val cookie = consolidated.find { it.itemId == "food_cookie" }
+    assertEquals(4, cookie?.quantity)
+  }
 }
 

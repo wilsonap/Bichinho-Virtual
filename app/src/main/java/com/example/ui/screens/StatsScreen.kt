@@ -55,7 +55,7 @@ fun StatsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("Estatísticas & Perfil", fontWeight = FontWeight.Bold) }
             )
         }

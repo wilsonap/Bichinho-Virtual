@@ -60,7 +60,7 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("Configurações", fontWeight = FontWeight.Bold) }
             )
         }

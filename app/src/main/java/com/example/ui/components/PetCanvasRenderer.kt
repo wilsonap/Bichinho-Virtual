@@ -46,18 +46,32 @@ fun PetCanvasRenderer(
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pet_anim")
 
-    // Ambient breathing/bounce
+    // Ambient breathing - grounded when idle, gentle rhythm when sleeping
     val breathingOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = if (pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO) 3f else 9f,
+        targetValue = if (pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO) 2.5f else 0f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                if (pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO) 1800 else if (behaviorState == PetBehaviorState.FELIZ || behaviorState == PetBehaviorState.BRINCANDO) 450 else 850,
+                if (pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO) 1800 else 1000,
                 easing = FastOutSlowInEasing
             ),
             repeatMode = RepeatMode.Reverse
         ),
         label = "breathing"
+    )
+
+    // Subtle rhythmic chest expansion without moving feet off ground
+    val idleChestScale by infiniteTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = if (pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO) 1.04f else 1.012f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                if (pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO) 1800 else 1200,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "idle_chest_scale"
     )
 
     // Tail wag / wing flutter / walking waddle
@@ -134,24 +148,50 @@ fun PetCanvasRenderer(
             val canvasWidth = this.size.width
             val canvasHeight = this.size.height
             val centerX = canvasWidth / 2f
-            val groundY = canvasHeight - 26.dp.toPx()
 
-            // Calculate vertical offsets
+            val isSleeping = pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO
+
+            // Common Ground Reference Plane inside the canvas
+            val groundY = canvasHeight * 0.70f
+
+            // Vertical offset from pet center (centerY) to the bottom of paws/talons on the floor
+            val feetBottomOffsetY = if (!pet.isHatched || stage == PetStage.OVO) {
+                65.dp.toPx()
+            } else {
+                38.dp.toPx() * stage.scaleMultiplier
+            }
+
+            // Ground-anchored center position when awake; canvas-centered when sleeping in bed
+            val baseCenterY = if (isSleeping) {
+                canvasHeight * 0.50f
+            } else {
+                groundY - feetBottomOffsetY
+            }
+
+            // Calculate vertical offsets for animations
             val isSitting = behaviorState == PetBehaviorState.SENTADO
-            val isJumping = behaviorState == PetBehaviorState.PULANDO || jumpProgress > 0.05f
-            val jumpOffsetY = if (isJumping) -jumpProgress * 42.dp.toPx() else 0f
-            val sitOffsetY = if (isSitting) 8.dp.toPx() else 0f
-            val centerY = canvasHeight / 2f + breathingOffset + jumpOffsetY + sitOffsetY
+            val isJumping = (behaviorState == PetBehaviorState.PULANDO || behaviorState == PetBehaviorState.BRINCANDO || jumpProgress > 0.05f) && !isSleeping
+            val jumpOffsetY = if (isJumping) -jumpProgress * 38.dp.toPx() else 0f
+            val sitOffsetY = if (isSitting && !isSleeping) 4.dp.toPx() else 0f
 
-            // Ground Shadow
-            val shadowScale = (1f - (jumpProgress * 0.45f)).coerceIn(0.5f, 1.2f)
-            val shadowWidth = canvasWidth * 0.55f * stage.scaleMultiplier * shadowScale * (if (isSquishing) 1.2f else 1f)
-            val shadowHeight = 16.dp.toPx() * shadowScale
-            drawOval(
-                color = Color(0x2B000000),
-                topLeft = Offset(centerX - shadowWidth / 2, groundY),
-                size = Size(shadowWidth, shadowHeight)
-            )
+            // Subtle walking step oscillation (anchored firmly to floor, no high flying jumps)
+            val walkStepBounce = if (behaviorState == PetBehaviorState.CAMINHANDO && !isSleeping) {
+                -kotlin.math.abs(sin(stepPhase * 6.28318f)) * 2.2.dp.toPx()
+            } else 0f
+
+            val centerY = baseCenterY + jumpOffsetY + sitOffsetY + walkStepBounce
+
+            // Ground Shadow: directly underneath the feet, scaled dynamically during jumps (only when awake on the floor)
+            if (!isSleeping) {
+                val jumpShadowScale = (1f - (jumpProgress * 0.35f)).coerceIn(0.58f, 1.0f)
+                val shadowWidth = 56.dp.toPx() * stage.scaleMultiplier * jumpShadowScale * (if (isSquishing) 1.15f else 1f)
+                val shadowHeight = 9.dp.toPx() * jumpShadowScale
+                drawOval(
+                    color = Color(0x30000000),
+                    topLeft = Offset(centerX - shadowWidth / 2f, groundY - shadowHeight * 0.40f),
+                    size = Size(shadowWidth, shadowHeight)
+                )
+            }
 
             if (!pet.isHatched || stage == PetStage.OVO) {
                 // Render Egg
@@ -164,24 +204,33 @@ fun PetCanvasRenderer(
                 )
             } else {
                 // Render Hatched Pet
-                val isSleeping = pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO
                 val isSick = pet.health < 40 || behaviorState == PetBehaviorState.DOENTE
                 val isDirty = pet.hygiene < 35
                 val isHappy = pet.happiness > 75 || behaviorState == PetBehaviorState.FELIZ || behaviorState == PetBehaviorState.BRINCANDO
                 val isHungry = pet.hunger < 30 || behaviorState == PetBehaviorState.PROCURANDO_COMIDA
 
-                // Horizontal flip based on walk direction & squash/stretch
-                val flipScaleX = if (walkDirection < 0f) -1f else 1f
-                val squashScaleX = if (isSquishing) 1.16f else if (isJumping) 0.92f else if (isSitting) 1.08f else 1f
-                val squashScaleY = if (isSquishing) 0.84f else if (isJumping) 1.15f else if (isSitting) 0.92f else 1f
+                // Horizontal flip based on walk direction (when sleeping, face right towards foot of bed)
+                val flipScaleX = if (isSleeping) 1f else (if (walkDirection < 0f) -1f else 1f)
 
-                // Body waddle angle when walking
-                val waddleAngle = if (behaviorState == PetBehaviorState.CAMINHANDO) {
+                // Sleep scale reduction: ~18% smaller for cozy Tamagotchi bed feel
+                val sleepScale = if (isSleeping) 0.82f else 1.0f
+
+                val sleepingBreathingScaleX = if (isSleeping) 1.05f * idleChestScale else 1f
+                val sleepingBreathingScaleY = if (isSleeping) 0.95f * (2f - idleChestScale) else idleChestScale
+                val squashScaleX = (if (isSquishing) 1.16f else if (isJumping) 0.92f else if (isSitting) 1.08f else 1f) * sleepingBreathingScaleX * sleepScale
+                val squashScaleY = (if (isSquishing) 0.84f else if (isJumping) 1.15f else if (isSitting) 0.92f else 1f) * sleepingBreathingScaleY * sleepScale
+
+                // Body waddle angle when walking or gentle head/body rest angle when sleeping
+                val sleepBedTiltAngle = if (isSleeping) -15f else 0f
+                val sleepHeadSway = if (isSleeping) sin(floatAnim * 3.14159f) * 2.5f else 0f
+                val waddleAngle = if (behaviorState == PetBehaviorState.CAMINHANDO && !isSleeping) {
                     sin(stepPhase * 6.28318f) * 6f
                 } else 0f
 
+                val finalRotation = sleepBedTiltAngle + sleepHeadSway + waddleAngle
+
                 scale(scaleX = flipScaleX * squashScaleX, scaleY = squashScaleY, pivot = Offset(centerX, centerY)) {
-                    rotate(waddleAngle, pivot = Offset(centerX, centerY + 30.dp.toPx())) {
+                    rotate(finalRotation, pivot = Offset(centerX, centerY + (if (isSleeping) 0f else 30.dp.toPx()))) {
                         drawHatchedPet(
                             pet = pet,
                             species = species,
@@ -210,8 +259,8 @@ fun PetCanvasRenderer(
             if (showBubbles || behaviorState == PetBehaviorState.TOMANDO_BANHO) {
                 drawSoapBubbles(centerX, centerY, floatAnim)
             }
-            if (pet.isSleeping || behaviorState == PetBehaviorState.DORMINDO) {
-                drawZzz(centerX + 50.dp.toPx(), centerY - 45.dp.toPx(), floatAnim)
+            if (isSleeping) {
+                drawZzz(centerX + 26.dp.toPx(), centerY - 32.dp.toPx(), floatAnim)
             } else if (behaviorState == PetBehaviorState.BOCEJANDO) {
                 drawZzz(centerX + 40.dp.toPx(), centerY - 40.dp.toPx(), floatAnim)
             } else if (behaviorState == PetBehaviorState.FELIZ || (pet.happiness > 80 && !isInteracting)) {

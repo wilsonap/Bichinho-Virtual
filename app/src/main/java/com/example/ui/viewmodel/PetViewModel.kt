@@ -190,7 +190,11 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                     // 1. Locomotion / Walking physics
                     var newOffsetX = current.walkOffsetX
                     var newDirection = current.walkDirection
-                    if (current.behaviorState == PetBehaviorState.CAMINHANDO) {
+
+                    if (currentPet.isSleeping || current.behaviorState == PetBehaviorState.DORMINDO) {
+                        newOffsetX = 0f
+                        newDirection = 1f
+                    } else if (current.behaviorState == PetBehaviorState.CAMINHANDO) {
                         val speed = 3.5f * (if (currentPet.energy > 70) 1.2f else if (currentPet.energy < 30) 0.6f else 1.0f)
                         val diff = current.targetOffsetX - current.walkOffsetX
                         if (abs(diff) > speed) {
@@ -220,9 +224,9 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                         blinkProgress = 1f
                     }
 
-                    // 3. Jump Physics
+                    // 3. Jump Physics (Only during explicit jumping / playful leaping states)
                     var jumpProgress = current.jumpProgress
-                    if (current.behaviorState == PetBehaviorState.PULANDO || current.behaviorState == PetBehaviorState.FELIZ) {
+                    if (current.behaviorState == PetBehaviorState.PULANDO || current.behaviorState == PetBehaviorState.BRINCANDO) {
                         jumpTimer++
                         val t = (jumpTimer % 14) / 14f
                         // Parabolic jump arc: 4 * t * (1 - t)
@@ -584,7 +588,9 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 behaviorState = PetBehaviorState.ACORDANDO,
                 currentSpeechText = wakeSpeech,
-                speechBubbleVisible = true
+                speechBubbleVisible = true,
+                walkOffsetX = 0f,
+                targetOffsetX = 0f
             )
         }
         _toastMessage.value = if (isAutomatic) {
@@ -626,7 +632,9 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         behaviorState = PetBehaviorState.DORMINDO,
                         currentSpeechText = "Shhh... ${currentPet.name.ifBlank { "O bichinho" }} está dormindo. 💤",
-                        speechBubbleVisible = true
+                        speechBubbleVisible = true,
+                        walkOffsetX = 0f,
+                        targetOffsetX = 0f
                     )
                 }
                 return@launch
@@ -643,7 +651,9 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         behaviorState = PetBehaviorState.DORMINDO,
                         currentSpeechText = "Luzes apagadas... Bons sonhos! 💤",
-                        speechBubbleVisible = true
+                        speechBubbleVisible = true,
+                        walkOffsetX = 0f,
+                        targetOffsetX = 0f
                     )
                 }
                 _toastMessage.value = "Luzes apagadas! Bichinho foi dormir... 💤"
@@ -738,6 +748,11 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
 
     fun buyShopItem(item: ShopItem, equipImmediately: Boolean = false, onSuccess: (() -> Unit)? = null) {
         viewModelScope.launch {
+            val playerCoins = playerState.value?.coins ?: 0
+            if (playerCoins < item.price) {
+                _toastMessage.value = "Moedas insuficientes para comprar ${item.name}."
+                return@launch
+            }
             val success = repository.buyItem(item, equipImmediately = equipImmediately)
             if (success) {
                 audioManager.playSfx(SoundEffect.BUY)
@@ -748,7 +763,7 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 onSuccess?.invoke()
             } else {
-                _toastMessage.value = "Moedas insuficientes para comprar ${item.name}."
+                _toastMessage.value = "Você já possui ${item.name} no seu inventário!"
             }
         }
     }

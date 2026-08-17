@@ -29,7 +29,7 @@ fun MinigamesHubScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("Minijogos", fontWeight = FontWeight.Bold) }
             )
         }

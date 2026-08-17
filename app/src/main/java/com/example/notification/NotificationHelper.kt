@@ -64,6 +64,7 @@ object NotificationHelper {
             ).apply {
                 description = CHANNEL_CARE_DESC
                 enableVibration(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
 
             // 2. Health Channel (High importance)
@@ -74,6 +75,7 @@ object NotificationHelper {
             ).apply {
                 description = CHANNEL_HEALTH_DESC
                 enableVibration(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
 
             // 3. Silent Channel (Low importance for quiet hours)
@@ -85,6 +87,7 @@ object NotificationHelper {
                 description = CHANNEL_SILENT_DESC
                 enableVibration(false)
                 setSound(null, null)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
 
             notificationManager.createNotificationChannels(listOf(careChannel, healthChannel, silentChannel))
@@ -214,6 +217,7 @@ object NotificationHelper {
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(effectivePriority)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
