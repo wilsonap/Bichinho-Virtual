@@ -91,6 +91,9 @@ fun MainApp(
 
     val audioManager = remember { com.example.audio.GameAudioManager.getInstance(context) }
 
+    // Retorno Sala após sair do fluxo de minijogos aberto pela Garagem / atalho
+    var pendingLivingRoomAfterMinigames by remember { mutableStateOf(false) }
+
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -226,9 +229,15 @@ fun MainApp(
                         onToggleSleep = { viewModel.toggleSleep() },
                         onPlay = { item -> viewModel.playWithToy(item) },
                         onDoctor = { payWithCoins -> viewModel.doctorCheckup(payWithCoins) },
-                        onOpenMinigames = { navController.navigate(Screen.Minigames.route) },
+                        onOpenMinigames = {
+                            pendingLivingRoomAfterMinigames = true
+                            navController.navigate(Screen.Minigames.route)
+                        },
                         onOpenShop = { navController.navigate(Screen.Shop.route) },
-                        onOpenInventory = { navController.navigate(Screen.Inventory.route) }
+                        onOpenInventory = { navController.navigate(Screen.Inventory.route) },
+                        forceReturnToLivingRoom = pendingLivingRoomAfterMinigames &&
+                            currentRoute == Screen.Home.route,
+                        onForceReturnConsumed = { pendingLivingRoomAfterMinigames = false }
                     )
                 } else {
                     Box(

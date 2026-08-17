@@ -426,21 +426,23 @@ class PetRepository(private val dao: PetDao) {
         dao.insertOrUpdatePet(pet.copy(name = name.trim()))
     }
 
-    suspend fun feedPet(shopItem: ShopItem?): Boolean {
-        val pet = dao.getPet() ?: return false
-        if (!pet.isHatched) return false
+    suspend fun feedPet(shopItem: ShopItem?): FeedOutcome {
+        val pet = dao.getPet() ?: return FeedOutcome.failed()
+        if (!pet.isHatched) return FeedOutcome.failed()
 
         // Guard: Reject non-food items if a specific shop item was passed
         if (shopItem != null && shopItem.category != ItemCategory.ALIMENTO) {
             Log.w("ITEM_AUDIT", "itemId=${shopItem.id}, itemName=${shopItem.name}, itemType=${shopItem.category.name}, action=FEED, result=REJECTED_WRONG_CATEGORY")
-            return false
+            return FeedOutcome.failed()
         }
 
-        val hungerGain = shopItem?.hungerBoost ?: 25
-        val healthGain = shopItem?.healthBoost ?: 5
-        val energyGain = shopItem?.energyBoost ?: 5
-        val happinessGain = shopItem?.happinessBoost ?: 10
-        val expGain = shopItem?.expBoost ?: 10
+        val species = Species.fromId(pet.speciesId)
+        val bonuses = FoodBonusResolver.resolve(species, shopItem)
+        val hungerGain = bonuses.hungerGain
+        val healthGain = bonuses.healthGain
+        val energyGain = bonuses.energyGain
+        val happinessGain = bonuses.happinessGain
+        val expGain = bonuses.expGain
 
         // Consume item from inventory if specific item passed
         if (shopItem != null) {
@@ -453,7 +455,7 @@ class PetRepository(private val dao: PetDao) {
                 }
             } else {
                 Log.d("ITEM_AUDIT", "itemId=${shopItem.id}, itemName=${shopItem.name}, itemType=FOOD, action=FEED, result=NOT_IN_INVENTORY")
-                return false // item not in inventory
+                return FeedOutcome.failed()
             }
         }
 
@@ -490,10 +492,10 @@ class PetRepository(private val dao: PetDao) {
 
         Log.d(
             "ITEM_AUDIT",
-            "itemId=${shopItem?.id ?: "snack"}, itemName=${shopItem?.name ?: "Ração Básica"}, itemType=FOOD, action=FEED, result=SUCCESS(hunger+$hungerGain, exp+$expGain, consumed=${shopItem != null})"
+            "itemId=${shopItem?.id ?: "snack"}, itemName=${shopItem?.name ?: "Ração Básica"}, itemType=FOOD, action=FEED, result=SUCCESS(hunger+$hungerGain, exp+$expGain, favorite=${bonuses.wasFavorite}, consumed=${shopItem != null})"
         )
 
-        return true
+        return FeedOutcome(success = true, wasFavorite = bonuses.wasFavorite)
     }
 
     suspend fun bathePet() {

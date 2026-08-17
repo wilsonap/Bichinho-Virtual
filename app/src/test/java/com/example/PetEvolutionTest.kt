@@ -172,7 +172,7 @@ class PetEvolutionTest {
         assertEquals(PetStage.IDOSO, progress.nextStage)
         assertFalse(progress.isDaysRequirementMet) // 14 < 30
         assertTrue(progress.isLevelRequirementMet) // 27 >= 25
-        assertFalse(progress.canEvolve) // Só evolui quando cumprir ambos
+        assertFalse(progress.isReadyToEvolve) // Só evolui quando cumprir ambos
     }
 
     @Test
@@ -192,8 +192,8 @@ class PetEvolutionTest {
 
         assertEquals(PetStage.IDOSO, progress.currentStage)
         assertNull(progress.nextStage)
-        assertTrue(progress.isMaxStage)
-        assertFalse(progress.canEvolve)
+        assertTrue(progress.nextStage == null)
+        assertFalse(progress.isReadyToEvolve)
     }
 
     @Test

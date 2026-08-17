@@ -533,11 +533,15 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                     speechBubbleVisible = true
                 )
             }
-            val success = repository.feedPet(foodItem)
-            if (success) {
+            val outcome = repository.feedPet(foodItem)
+            if (outcome.success) {
                 notificationPrefs.onPetFed()
                 PetCareScheduler.scheduleNextCheck(getApplication())
-                _toastMessage.value = if (foodItem != null) "Alimentou com ${foodItem.name}! 😋" else "Alimentou com ração básica! 😋"
+                _toastMessage.value = when {
+                    outcome.wasFavorite -> "Esse é um dos meus favoritos! 😋"
+                    foodItem != null -> "Alimentou com ${foodItem.name}! 😋"
+                    else -> "Alimentou com ração básica! 😋"
+                }
             } else {
                 _toastMessage.value = "Item não disponível no inventário."
             }

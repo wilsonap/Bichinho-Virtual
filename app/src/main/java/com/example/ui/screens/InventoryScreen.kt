@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Checkroom
+import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,15 +21,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.InventoryEntity
-import com.example.data.model.ItemCategory
-import com.example.data.model.ShopCatalog
-import com.example.data.model.ShopItem
-
-import androidx.compose.material.icons.filled.LocalHospital
 import com.example.data.local.PetEntity
+import com.example.data.model.FoodPreferenceCatalog
+import com.example.data.model.FoodShopOrganization
+import com.example.data.model.FoodShopSubcategory
 import com.example.data.model.PetDisease
 import com.example.data.model.PetHealthRules
 import com.example.data.model.PetHealthState
+import com.example.data.model.ItemCategory
+import com.example.data.model.ShopCatalog
+import com.example.data.model.ShopItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +41,7 @@ fun InventoryScreen(
     onEquipItem: (InventoryEntity) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf(ItemCategory.ALIMENTO) }
+    var selectedFoodSubcategory by remember { mutableStateOf(FoodShopSubcategory.FAVORITOS) }
 
     // Defensive grouping by itemId: guarantees a single card per distinct item
     val consolidatedInventory = remember(inventory) {
@@ -56,8 +59,24 @@ fun InventoryScreen(
         }
     }
 
-    val filteredInventory = remember(consolidatedInventory, selectedCategory) {
-        consolidatedInventory.filter { it.category == selectedCategory.name && it.quantity > 0 }
+    val filteredInventory = remember(
+        consolidatedInventory,
+        selectedCategory,
+        selectedFoodSubcategory,
+        pet?.speciesId
+    ) {
+        val inCategory = consolidatedInventory.filter {
+            it.category == selectedCategory.name && it.quantity > 0
+        }
+        if (selectedCategory != ItemCategory.ALIMENTO) {
+            inCategory
+        } else {
+            val allowedIds = FoodShopOrganization
+                .filterShopFoods(selectedFoodSubcategory, pet?.speciesId)
+                .map { it.id }
+                .toSet()
+            inCategory.filter { it.itemId in allowedIds }
+        }
     }
 
     val catalogMap = remember { ShopCatalog.items.associateBy { it.id } }
@@ -108,6 +127,17 @@ fun InventoryScreen(
                         }
                     )
                 }
+            }
+
+            if (selectedCategory == ItemCategory.ALIMENTO) {
+                FoodSubcategoryChipRow(
+                    selected = selectedFoodSubcategory,
+                    onSelect = { selectedFoodSubcategory = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .testTag("inventory_food_subcategory_row")
+                )
             }
 
             // Medicine Status Header
@@ -170,7 +200,17 @@ fun InventoryScreen(
 
             if (filteredInventory.isEmpty()) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag(
+                            if (selectedCategory == ItemCategory.ALIMENTO &&
+                                selectedFoodSubcategory == FoodShopSubcategory.FAVORITOS
+                            ) {
+                                "inventory_favorites_empty"
+                            } else {
+                                "inventory_category_empty"
+                            }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -180,7 +220,13 @@ fun InventoryScreen(
                         Text(text = "🎒", fontSize = 48.sp)
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Nenhum item nesta categoria.",
+                            text = if (selectedCategory == ItemCategory.ALIMENTO &&
+                                selectedFoodSubcategory == FoodShopSubcategory.FAVORITOS
+                            ) {
+                                "Nenhum alimento favorito encontrado para esta espécie."
+                            } else {
+                                "Nenhum item nesta categoria."
+                            },
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -209,6 +255,9 @@ fun InventoryScreen(
                     ) {
                         items(filteredInventory) { invItem ->
                             val shopItem = ShopCatalog.findItemById(invItem.itemId)
+                            val isFavoriteFood = selectedCategory == ItemCategory.ALIMENTO &&
+                                pet != null &&
+                                FoodPreferenceCatalog.isFavorite(pet.speciesId, invItem.itemId)
 
                             Card(
                                 shape = RoundedCornerShape(16.dp),
@@ -232,6 +281,17 @@ fun InventoryScreen(
                                             Box(contentAlignment = Alignment.Center) {
                                                 Text(text = shopItem?.iconEmoji ?: "📦", fontSize = 32.sp)
                                             }
+                                        }
+
+                                        if (isFavoriteFood) {
+                                            Text(
+                                                text = "❤️",
+                                                fontSize = 14.sp,
+                                                modifier = Modifier
+                                                    .align(Alignment.TopStart)
+                                                    .offset(x = (-2).dp, y = (-2).dp)
+                                                    .testTag("inv_favorite_${invItem.itemId}")
+                                            )
                                         }
 
                                         if (invItem.quantity > 1) {
@@ -261,6 +321,16 @@ fun InventoryScreen(
                                         overflow = TextOverflow.Ellipsis,
                                         textAlign = TextAlign.Center
                                     )
+
+                                    if (isFavoriteFood) {
+                                        Text(
+                                            text = "❤️ Favorito",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFE11D48),
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
 
                                     if (selectedCategory == ItemCategory.MEDICAMENTO && shopItem != null) {
                                         Spacer(modifier = Modifier.height(4.dp))

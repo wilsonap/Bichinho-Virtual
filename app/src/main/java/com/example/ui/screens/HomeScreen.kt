@@ -41,6 +41,7 @@ import com.example.data.local.PlayerEntity
 import com.example.data.model.*
 import com.example.notification.PetStatsCalculator
 import com.example.ui.components.*
+import com.example.ui.rooms.TemporaryRoomSession
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -61,7 +62,10 @@ fun HomeScreen(
     onDoctor: (Boolean) -> Unit,
     onOpenMinigames: () -> Unit,
     onOpenShop: () -> Unit,
-    onOpenInventory: () -> Unit
+    onOpenInventory: () -> Unit,
+    /** Quando true (retorno de minijogo/garagem), força Sala e consome o sinal. */
+    forceReturnToLivingRoom: Boolean = false,
+    onForceReturnConsumed: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     var showFeedDialog by remember { mutableStateOf(false) }
@@ -75,12 +79,72 @@ fun HomeScreen(
         mutableStateOf(if (pet.isSleeping || isNightTime) HouseRoom.BEDROOM else HouseRoom.LIVING_ROOM)
     }
 
+    val temporaryRooms = remember(coroutineScope) { TemporaryRoomSession(coroutineScope) }
+    temporaryRooms.isSleeping = { pet.isSleeping }
+    temporaryRooms.getCurrentRoom = { currentRoom }
+    temporaryRooms.setCurrentRoom = { currentRoom = it }
+
+    DisposableEffect(Unit) {
+        onDispose { temporaryRooms.cancelTimer() }
+    }
+
+    LaunchedEffect(forceReturnToLivingRoom) {
+        if (forceReturnToLivingRoom) {
+            temporaryRooms.returnToLivingRoomNow()
+            onForceReturnConsumed()
+        }
+    }
+
     LaunchedEffect(pet.isSleeping) {
         if (pet.isSleeping) {
+            temporaryRooms.cancelTimer()
             currentRoom = HouseRoom.BEDROOM
         } else if (currentRoom == HouseRoom.BEDROOM && !isNightTime) {
             currentRoom = HouseRoom.LIVING_ROOM
         }
+    }
+
+    val openKitchenForFeed: () -> Unit = {
+        temporaryRooms.cancelTimer()
+        temporaryRooms.goToWithoutTimer(HouseRoom.KITCHEN)
+        showFeedDialog = true
+    }
+
+    val openBackyardForPlay: () -> Unit = {
+        temporaryRooms.cancelTimer()
+        temporaryRooms.goToWithoutTimer(HouseRoom.BACKYARD)
+        showToyDialog = true
+    }
+
+    // Banheiro: manter implementação atual (funcional) — não migrar para TemporaryRoomSession
+    val batheInBathroom: () -> Unit = {
+        temporaryRooms.cancelTimer()
+        val prev = currentRoom
+        currentRoom = HouseRoom.BATHROOM
+        onBathe()
+        coroutineScope.launch {
+            delay(2800)
+            if (currentRoom == HouseRoom.BATHROOM && prev != HouseRoom.BATHROOM && !pet.isSleeping) {
+                currentRoom = prev
+            }
+        }
+    }
+
+    val toggleSleepRoom: () -> Unit = {
+        temporaryRooms.cancelTimer()
+        if (pet.isSleeping) {
+            onToggleSleep()
+            currentRoom = HouseRoom.LIVING_ROOM
+        } else {
+            currentRoom = HouseRoom.BEDROOM
+            onToggleSleep()
+        }
+    }
+
+    val openGarageMinigames: () -> Unit = {
+        temporaryRooms.cancelTimer()
+        temporaryRooms.goToWithoutTimer(HouseRoom.GARAGE)
+        onOpenMinigames()
     }
 
     val species = Species.fromId(pet.speciesId)
@@ -138,7 +202,10 @@ fun HomeScreen(
                     HouseRoomSelectorBar(
                         currentRoom = currentRoom,
                         isSleeping = pet.isSleeping,
-                        onSelectRoom = { currentRoom = it },
+                        onSelectRoom = {
+                            temporaryRooms.cancelTimer()
+                            currentRoom = it
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -165,7 +232,7 @@ fun HomeScreen(
                         isBathing = isBathing,
                         onInteractWithPet = onInteractWithPet,
                         onWalkToPosition = onWalkToPosition,
-                        onOpenMinigames = onOpenMinigames,
+                        onOpenMinigames = openGarageMinigames,
                         petSize = 190.dp,
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
@@ -173,36 +240,10 @@ fun HomeScreen(
                     CareActionsDock(
                         pet = pet,
                         isCompact = true,
-                        onFeedClick = {
-                            val prev = currentRoom
-                            currentRoom = HouseRoom.KITCHEN
-                            showFeedDialog = true
-                        },
-                        onBathe = {
-                            val prev = currentRoom
-                            currentRoom = HouseRoom.BATHROOM
-                            onBathe()
-                            coroutineScope.launch {
-                                delay(2800)
-                                if (currentRoom == HouseRoom.BATHROOM && prev != HouseRoom.BATHROOM && !pet.isSleeping) {
-                                    currentRoom = prev
-                                }
-                            }
-                        },
-                        onToggleSleep = {
-                            if (pet.isSleeping) {
-                                onToggleSleep()
-                                currentRoom = HouseRoom.LIVING_ROOM
-                            } else {
-                                currentRoom = HouseRoom.BEDROOM
-                                onToggleSleep()
-                            }
-                        },
-                        onPlay = {
-                            val prev = currentRoom
-                            currentRoom = HouseRoom.BACKYARD
-                            showToyDialog = true
-                        },
+                        onFeedClick = openKitchenForFeed,
+                        onBathe = batheInBathroom,
+                        onToggleSleep = toggleSleepRoom,
+                        onPlay = openBackyardForPlay,
                         onDoctorClick = { showDoctorDialog = true },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -233,7 +274,10 @@ fun HomeScreen(
                 HouseRoomSelectorBar(
                     currentRoom = currentRoom,
                     isSleeping = pet.isSleeping,
-                    onSelectRoom = { currentRoom = it },
+                    onSelectRoom = {
+                        temporaryRooms.cancelTimer()
+                        currentRoom = it
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -244,7 +288,7 @@ fun HomeScreen(
                     isBathing = isBathing,
                     onInteractWithPet = onInteractWithPet,
                     onWalkToPosition = onWalkToPosition,
-                    onOpenMinigames = onOpenMinigames,
+                    onOpenMinigames = openGarageMinigames,
                     petSize = 230.dp,
                     modifier = Modifier.weight(1f).fillMaxWidth()
                 )
@@ -261,36 +305,10 @@ fun HomeScreen(
                 CareActionsDock(
                     pet = pet,
                     isCompact = false,
-                    onFeedClick = {
-                        val prev = currentRoom
-                        currentRoom = HouseRoom.KITCHEN
-                        showFeedDialog = true
-                    },
-                    onBathe = {
-                        val prev = currentRoom
-                        currentRoom = HouseRoom.BATHROOM
-                        onBathe()
-                        coroutineScope.launch {
-                            delay(2800)
-                            if (currentRoom == HouseRoom.BATHROOM && prev != HouseRoom.BATHROOM && !pet.isSleeping) {
-                                currentRoom = prev
-                            }
-                        }
-                    },
-                    onToggleSleep = {
-                        if (pet.isSleeping) {
-                            onToggleSleep()
-                            currentRoom = HouseRoom.LIVING_ROOM
-                        } else {
-                            currentRoom = HouseRoom.BEDROOM
-                            onToggleSleep()
-                        }
-                    },
-                    onPlay = {
-                        val prev = currentRoom
-                        currentRoom = HouseRoom.BACKYARD
-                        showToyDialog = true
-                    },
+                    onFeedClick = openKitchenForFeed,
+                    onBathe = batheInBathroom,
+                    onToggleSleep = toggleSleepRoom,
+                    onPlay = openBackyardForPlay,
                     onDoctorClick = { showDoctorDialog = true },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -299,39 +317,47 @@ fun HomeScreen(
 
         // Dialogs
         if (showFeedDialog) {
-            val previousRoomOnFeed = currentRoom
             FeedDialog(
                 inventory = inventory,
-                onDismiss = { showFeedDialog = false },
+                onDismiss = {
+                    showFeedDialog = false
+                    // Diálogo chama onDismiss também após alimentar — só volta se não houver timer ativo
+                    if (currentRoom == HouseRoom.KITCHEN &&
+                        !pet.isSleeping &&
+                        !temporaryRooms.hasActiveTimer()
+                    ) {
+                        temporaryRooms.returnToLivingRoomNow()
+                    }
+                },
                 onFeedItem = { item ->
                     onFeed(item)
-                    coroutineScope.launch {
-                        delay(3200)
-                        if (currentRoom == HouseRoom.KITCHEN && previousRoomOnFeed != HouseRoom.KITCHEN && !pet.isSleeping) {
-                            currentRoom = previousRoomOnFeed
-                        }
-                    }
+                    // Animação + ~5s na cozinha; nova alimentação reinicia o timer
+                    temporaryRooms.bump(HouseRoom.KITCHEN, TemporaryRoomSession.KITCHEN_AFTER_FEED_MS)
                 }
             )
         }
 
         if (showToyDialog) {
-            val previousRoomOnPlay = currentRoom
             ToySelectionDialog(
                 inventory = inventory,
-                onDismiss = { showToyDialog = false },
-                onPlayToy = { toy ->
-                    onPlay(toy)
-                    coroutineScope.launch {
-                        delay(3400)
-                        if (currentRoom == HouseRoom.BACKYARD && previousRoomOnPlay != HouseRoom.BACKYARD && !pet.isSleeping) {
-                            currentRoom = previousRoomOnPlay
-                        }
+                onDismiss = {
+                    showToyDialog = false
+                    // Idem: onDismiss após brincar não deve cancelar a permanência de ~20s
+                    if (currentRoom == HouseRoom.BACKYARD &&
+                        !pet.isSleeping &&
+                        !temporaryRooms.hasActiveTimer()
+                    ) {
+                        temporaryRooms.returnToLivingRoomNow()
                     }
                 },
+                onPlayToy = { toy ->
+                    onPlay(toy)
+                    // Animação + ~20s no quintal; nova brincadeira reinicia o timer
+                    temporaryRooms.bump(HouseRoom.BACKYARD, TemporaryRoomSession.BACKYARD_AFTER_PLAY_MS)
+                },
                 onOpenMinigames = {
-                    currentRoom = HouseRoom.GARAGE
-                    onOpenMinigames()
+                    showToyDialog = false
+                    openGarageMinigames()
                 }
             )
         }
