@@ -204,7 +204,17 @@ fun PetCanvasRenderer(
                 )
             } else {
                 // Render Hatched Pet
-                val isSick = pet.health <= com.example.data.model.PetHealthRules.HEALTH_DOENTE_MAX || (pet.disease.isNotEmpty() && pet.disease != "NONE") || behaviorState == PetBehaviorState.DOENTE
+                val healthState = com.example.data.model.PetHealthRules.getHealthState(pet.health)
+                val hasNamedDisease = pet.disease.isNotEmpty() && pet.disease != "NONE"
+                val showIllnessVisual =
+                    healthState == com.example.data.model.PetHealthState.DOENTE ||
+                        healthState == com.example.data.model.PetHealthState.CRITICO ||
+                        hasNamedDisease ||
+                        behaviorState == PetBehaviorState.DOENTE
+                val showTiredEyes =
+                    showIllnessVisual ||
+                        healthState == com.example.data.model.PetHealthState.INDISPOSTO
+                val isCritical = healthState == com.example.data.model.PetHealthState.CRITICO
                 val isDirty = pet.hygiene < 35
                 val isHappy = pet.happiness > 75 || behaviorState == PetBehaviorState.FELIZ || behaviorState == PetBehaviorState.BRINCANDO
                 val isHungry = pet.hunger < 30 || behaviorState == PetBehaviorState.PROCURANDO_COMIDA
@@ -246,7 +256,9 @@ fun PetCanvasRenderer(
                             chewPhase = chewPhase,
                             isSleeping = isSleeping,
                             isDirty = isDirty,
-                            isSick = isSick,
+                            showIllnessVisual = showIllnessVisual,
+                            showTiredEyes = showTiredEyes,
+                            isCritical = isCritical,
                             isHappy = isHappy,
                             isHungry = isHungry,
                             isSitting = isSitting
@@ -387,7 +399,9 @@ private fun DrawScope.drawHatchedPet(
     chewPhase: Float,
     isSleeping: Boolean,
     isDirty: Boolean,
-    isSick: Boolean,
+    showIllnessVisual: Boolean,
+    showTiredEyes: Boolean,
+    isCritical: Boolean,
     isHappy: Boolean,
     isHungry: Boolean,
     isSitting: Boolean
@@ -476,7 +490,9 @@ private fun DrawScope.drawHatchedPet(
             lookGazeY = lookGazeY,
             chewPhase = chewPhase,
             isSleeping = isSleeping,
-            isSick = isSick,
+            showTiredEyes = showTiredEyes,
+            showIllnessVisual = showIllnessVisual,
+            isCritical = isCritical,
             isHappy = isHappy,
             isHungry = isHungry,
             outlineColor = outlineColor
@@ -508,15 +524,51 @@ private fun DrawScope.drawHatchedPet(
             drawCircle(Color(0xBB78350F), radius = 5.dp.toPx(), center = Offset(centerX + 5.dp.toPx(), centerY - 25.dp.toPx()))
         }
 
-        // 9. Sick Band-Aid
-        if (isSick) {
+        // 9. Sick Band-Aid + indicador de doença (não usa olhos em X)
+        if (showIllnessVisual) {
+            // Curativo principal
             drawRoundRect(
                 color = Color(0xFFFFCC80),
                 topLeft = Offset(centerX + 12.dp.toPx(), centerY - 32.dp.toPx()),
                 size = Size(20.dp.toPx(), 8.dp.toPx()),
                 cornerRadius = CornerRadius(4.dp.toPx())
             )
-            drawCircle(Color(0xFFEF4444), radius = 2.dp.toPx(), center = Offset(centerX + 22.dp.toPx(), centerY - 28.dp.toPx()))
+            drawLine(
+                color = Color(0xFFEF4444),
+                start = Offset(centerX + 18.dp.toPx(), centerY - 28.dp.toPx()),
+                end = Offset(centerX + 26.dp.toPx(), centerY - 28.dp.toPx()),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFFEF4444),
+                start = Offset(centerX + 22.dp.toPx(), centerY - 32.dp.toPx()),
+                end = Offset(centerX + 22.dp.toPx(), centerY - 24.dp.toPx()),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            // Gotas de suor / alerta crítico
+            if (isCritical) {
+                drawOval(
+                    color = Color(0xAA60A5FA),
+                    topLeft = Offset(centerX - 34.dp.toPx(), centerY - 18.dp.toPx()),
+                    size = Size(5.dp.toPx(), 8.dp.toPx())
+                )
+                drawOval(
+                    color = Color(0xAA60A5FA),
+                    topLeft = Offset(centerX - 28.dp.toPx(), centerY - 8.dp.toPx()),
+                    size = Size(4.dp.toPx(), 6.dp.toPx())
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0x33EF4444), Color.Transparent),
+                        center = Offset(centerX, centerY),
+                        radius = 70.dp.toPx()
+                    ),
+                    center = Offset(centerX, centerY),
+                    radius = 70.dp.toPx()
+                )
+            }
         }
 
         // 10. Equipped Wearables (Hats & Accessories)
@@ -1333,7 +1385,9 @@ private fun DrawScope.drawFace(
     lookGazeY: Float,
     chewPhase: Float,
     isSleeping: Boolean,
-    isSick: Boolean,
+    showTiredEyes: Boolean,
+    showIllnessVisual: Boolean,
+    isCritical: Boolean,
     isHappy: Boolean,
     isHungry: Boolean,
     outlineColor: Color
@@ -1341,10 +1395,11 @@ private fun DrawScope.drawFace(
     val eyeY = centerY - 8.dp.toPx()
     val eyeSpacing = 16.dp.toPx()
 
-    // Blushing cheeks
+    // Blushing cheeks (mais pálido se doente/crítico)
     if (species != Species.POLVO) {
-        drawCircle(Color(0x88F472B6), radius = 6.dp.toPx(), center = Offset(centerX - 24.dp.toPx(), centerY + 3.dp.toPx()))
-        drawCircle(Color(0x88F472B6), radius = 6.dp.toPx(), center = Offset(centerX + 24.dp.toPx(), centerY + 3.dp.toPx()))
+        val cheek = if (showIllnessVisual) Color(0x44F472B6) else Color(0x88F472B6)
+        drawCircle(cheek, radius = 6.dp.toPx(), center = Offset(centerX - 24.dp.toPx(), centerY + 3.dp.toPx()))
+        drawCircle(cheek, radius = 6.dp.toPx(), center = Offset(centerX + 24.dp.toPx(), centerY + 3.dp.toPx()))
     }
 
     // Eye rendering based on behavior & blinking
@@ -1361,10 +1416,27 @@ private fun DrawScope.drawFace(
         val eyeColor = if (species == Species.PANDA) Color.White else outlineColor
         drawPath(leftEye, eyeColor, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round))
         drawPath(rightEye, eyeColor, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round))
-    } else if (isSick) {
-        // Sick X Eyes
-        drawXEye(centerX - eyeSpacing, eyeY, outlineColor)
-        drawXEye(centerX + eyeSpacing, eyeY, outlineColor)
+    } else if (showTiredEyes) {
+        // Olhos semicerrados/cansados (não "X" de morte)
+        drawSleepyEye(centerX - eyeSpacing, eyeY, outlineColor)
+        drawSleepyEye(centerX + eyeSpacing, eyeY, outlineColor)
+        if (isCritical) {
+            // Pálpebra mais pesada
+            drawLine(
+                outlineColor.copy(alpha = 0.55f),
+                start = Offset(centerX - eyeSpacing - 5.dp.toPx(), eyeY - 3.dp.toPx()),
+                end = Offset(centerX - eyeSpacing + 5.dp.toPx(), eyeY - 3.dp.toPx()),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                outlineColor.copy(alpha = 0.55f),
+                start = Offset(centerX + eyeSpacing - 5.dp.toPx(), eyeY - 3.dp.toPx()),
+                end = Offset(centerX + eyeSpacing + 5.dp.toPx(), eyeY - 3.dp.toPx()),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        }
     } else if (behaviorState == PetBehaviorState.FELIZ || behaviorState == PetBehaviorState.COM_SAUDADE) {
         // Joyful Heart Eyes or Cheerful Arcs
         drawHeartEye(centerX - eyeSpacing, eyeY, Color(0xFFF43F5E))
@@ -1447,7 +1519,7 @@ private fun DrawScope.drawFace(
                     drawRect(outlineColor, topLeft = Offset(centerX + 0.5.dp.toPx(), centerY + 3.dp.toPx()), size = Size(3.5.dp.toPx(), 5.dp.toPx()), style = Stroke(1.dp.toPx()))
                 }
             }
-            isSick || behaviorState == PetBehaviorState.TRISTE -> {
+            showIllnessVisual || behaviorState == PetBehaviorState.TRISTE -> {
                 // Sad Trembling Downward Mouth
                 val mouth = Path().apply {
                     moveTo(centerX - 8.dp.toPx(), centerY + 8.dp.toPx())

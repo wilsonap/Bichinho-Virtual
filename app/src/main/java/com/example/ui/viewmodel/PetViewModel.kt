@@ -71,6 +71,7 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     val autonomousState: StateFlow<PetAutonomousState> = _autonomousState.asStateFlow()
 
     private var previousStage: PetStage? = null
+    private var previousHealthState: PetHealthState? = null
     private var stateDurationSeconds = 0
 
     init {
@@ -151,6 +152,39 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     previousIsSleeping = pet.isSleeping
                 }
+            }
+        }
+
+        // Transição para Doente/Crítico: aviso + PET_SICK uma única vez
+        viewModelScope.launch {
+            petState.collect { pet ->
+                if (pet == null || !pet.isHatched) return@collect
+                val current = PetHealthRules.getHealthState(pet.health)
+                val previous = previousHealthState
+                if (PetHealthRules.shouldAnnounceIllnessTransition(previous, current)) {
+                    val name = pet.name.ifBlank { "Seu bichinho" }
+                    audioManager.playSfx(SoundEffect.PET_SICK)
+                    _toastMessage.value = if (current == PetHealthState.CRITICO) {
+                        "🚨 $name está em estado crítico e precisa de cuidados urgentes!"
+                    } else {
+                        "⚠️ $name ficou doente e precisa de cuidados."
+                    }
+                    _autonomousState.update {
+                        it.copy(
+                            behaviorState = PetBehaviorState.DOENTE,
+                            currentSpeechText = listOf(
+                                "Não estou me sentindo bem... 😞",
+                                "Acho que preciso de cuidados.",
+                                "Minha saúde está baixa."
+                            ).random(),
+                            speechBubbleVisible = true
+                        )
+                    }
+                }
+                if (PetHealthRules.isRecoveredFromIllness(previous, current)) {
+                    notificationPrefs.onPetDoctorTreated()
+                }
+                previousHealthState = current
             }
         }
 
@@ -314,9 +348,15 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                 val nextThought: String
 
                 when {
-                    health < 35 -> {
+                    health <= PetHealthRules.HEALTH_DOENTE_MAX -> {
                         nextState = PetBehaviorState.DOENTE
-                        nextThought = "Não estou me sentindo bem... vamos ao médico? 🩺"
+                        nextThought = listOf(
+                            "Não estou me sentindo bem...",
+                            "Será que podemos ir ao médico? 🩺",
+                            "Preciso descansar um pouco.",
+                            "Acho que preciso de cuidados.",
+                            "Minha saúde está baixa. 😞"
+                        ).random()
                     }
                     hunger < 15 -> {
                         nextState = PetBehaviorState.PROCURANDO_COMIDA
@@ -435,27 +475,51 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 audioManager.playSfx(SoundEffect.TAP)
-                if (pet.health < 40) {
-                    audioManager.playSfx(SoundEffect.PET_SICK)
+                if (pet.health <= PetHealthRules.HEALTH_DOENTE_MAX) {
+                    // Não repetir PET_SICK no toque — só PET_SAD / fala contextual
+                    audioManager.playSfx(SoundEffect.PET_SAD)
+                    _autonomousState.update {
+                        it.copy(
+                            behaviorState = PetBehaviorState.DOENTE,
+                            isSquishing = true,
+                            currentSpeechText = listOf(
+                                "Não estou me sentindo bem... 😞",
+                                "Será que podemos ir ao médico? 🩺",
+                                "Preciso descansar um pouco."
+                            ).random(),
+                            speechBubbleVisible = true
+                        )
+                    }
                 } else if (pet.happiness < 40) {
                     audioManager.playSfx(SoundEffect.PET_SAD)
+                    _autonomousState.update {
+                        it.copy(
+                            behaviorState = PetBehaviorState.FELIZ,
+                            isSquishing = true,
+                            currentSpeechText = listOf(
+                                "Hihihi, que cócegas boas! 🥰",
+                                "${species.soundLabel} Muito carinho!",
+                                "Eu amo você! ❤️✨",
+                                "Você é tão carinhoso comigo! 💖"
+                            ).random(),
+                            speechBubbleVisible = true
+                        )
+                    }
                 } else {
                     audioManager.playSfx(SoundEffect.PET_HAPPY)
-                }
-
-                // Happy squish & love burst
-                _autonomousState.update {
-                    it.copy(
-                        behaviorState = PetBehaviorState.FELIZ,
-                        isSquishing = true,
-                        currentSpeechText = listOf(
-                            "Hihihi, que cócegas boas! 🥰",
-                            "${species.soundLabel} Muito carinho!",
-                            "Eu amo você! ❤️✨",
-                            "Você é tão carinhoso comigo! 💖"
-                        ).random(),
-                        speechBubbleVisible = true
-                    )
+                    _autonomousState.update {
+                        it.copy(
+                            behaviorState = PetBehaviorState.FELIZ,
+                            isSquishing = true,
+                            currentSpeechText = listOf(
+                                "Hihihi, que cócegas boas! 🥰",
+                                "${species.soundLabel} Muito carinho!",
+                                "Eu amo você! ❤️✨",
+                                "Você é tão carinhoso comigo! 💖"
+                            ).random(),
+                            speechBubbleVisible = true
+                        )
+                    }
                 }
                 delay(300)
                 _autonomousState.update { it.copy(isSquishing = false) }

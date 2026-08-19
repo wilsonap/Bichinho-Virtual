@@ -167,8 +167,8 @@ object NotificationHelper {
             }
             PetNotificationType.HEALTH -> {
                 Tuple5(
-                    "Atenção com a Saúde! 🏥",
-                    "🏥 $effectiveName não está se sentindo bem. Vá cuidar dele.",
+                    "Atenção com a Saúde! 🤒",
+                    "🤒 $effectiveName não está se sentindo bem. Abra o jogo para cuidar dele.",
                     NOTIF_ID_HEALTH,
                     CHANNEL_HEALTH_ID,
                     NotificationCompat.PRIORITY_HIGH

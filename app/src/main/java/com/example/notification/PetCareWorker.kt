@@ -49,12 +49,12 @@ class PetCareWorker(
                             "🚨 A saúde de $effectivePetName está crítica! Dê remédios ou leve ao médico imediatamente."
                         )
                         petDisease != com.example.data.model.PetDisease.NONE -> Pair(
-                            "Bichinho Doente! 🩹",
-                            "🩹 $effectivePetName está com ${petDisease.displayName} e precisa de cuidados."
+                            "🤒 $effectivePetName não está bem",
+                            "🤒 $effectivePetName não está se sentindo bem. Abra o jogo para cuidar dele."
                         )
                         healthState == com.example.data.model.PetHealthState.DOENTE -> Pair(
-                            "Bichinho Doente! 🩹",
-                            "🩹 $effectivePetName ficou doente e precisa de cuidados."
+                            "🤒 $effectivePetName não está bem",
+                            "🤒 $effectivePetName não está se sentindo bem. Abra o jogo para cuidar dele."
                         )
                         else -> Pair(
                             "Bichinho Indisposto 💛",

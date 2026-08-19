@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -225,6 +226,14 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.SpaceBetween,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    HealthAlertCard(
+                        pet = pet,
+                        onClick = { showDoctorDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                    )
+
                     PetLivingStage(
                         pet = pet,
                         currentRoom = currentRoom,
@@ -279,6 +288,14 @@ fun HomeScreen(
                         currentRoom = it
                     },
                     modifier = Modifier.fillMaxWidth()
+                )
+
+                HealthAlertCard(
+                    pet = pet,
+                    onClick = { showDoctorDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp, bottom = 4.dp)
                 )
 
                 PetLivingStage(
@@ -681,80 +698,72 @@ private fun PetLivingStage(
             label = "pet_sleep_walk_y"
         )
 
-        // Top State / Mood Pill
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = if (pet.isSleeping) Color(0xFF334155).copy(alpha = 0.9f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-            shadowElevation = 2.dp,
+        // Top State / Mood Pill + badge permanente de doença/crítico
+        val healthState = PetHealthRules.getHealthState(pet.health)
+        Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 4.dp)
-                .testTag("pet_state_badge")
+                .padding(top = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (pet.isSleeping) Color(0xFF334155).copy(alpha = 0.9f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                shadowElevation = 2.dp,
+                modifier = Modifier.testTag("pet_state_badge")
             ) {
-                Text(
-                    text = autonomousState.behaviorState.defaultIcon,
-                    fontSize = 14.sp
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = autonomousState.behaviorState.displayName,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (pet.isSleeping) Color.White else MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-
-        // Dynamic Speech & Thought Bubble (dynamically centered over the pet)
-        val bubbleX = (animatedPetX + (petSize / 2f) - 105.dp).coerceIn(8.dp, (maxWidth - 218.dp).coerceAtLeast(8.dp))
-        val bubbleY = (animatedPetY - 50.dp).coerceAtLeast(6.dp)
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset(x = bubbleX, y = bubbleY)
-        ) {
-            AnimatedVisibility(
-                visible = autonomousState.speechBubbleVisible && autonomousState.currentSpeechText.isNotBlank(),
-                enter = fadeIn() + scaleIn(initialScale = 0.85f),
-                exit = fadeOut() + scaleOut(targetScale = 0.85f)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(horizontal = 8.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
+                    Text(
+                        text = autonomousState.behaviorState.defaultIcon,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = autonomousState.behaviorState.displayName,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (pet.isSleeping) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            val namedDisease = PetDisease.fromString(pet.disease)
+            if (healthState == PetHealthState.DOENTE ||
+                healthState == PetHealthState.CRITICO ||
+                namedDisease != PetDisease.NONE
+            ) {
+                Spacer(modifier = Modifier.height(4.dp))
+                if (namedDisease != PetDisease.NONE && healthState != PetHealthState.CRITICO) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = if (pet.isSleeping) Color(0xFF334155) else Color.White,
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.widthIn(max = 210.dp).testTag("thought_bubble")
+                        color = Color(0xFFFFEDD5),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFC2410C).copy(alpha = 0.45f)),
+                        shadowElevation = 2.dp,
+                        modifier = Modifier.testTag("health_condition_badge")
                     ) {
-                        Text(
-                            text = autonomousState.currentSpeechText,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (pet.isSleeping) Color.White else Color(0xFF1E293B),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            textAlign = TextAlign.Center
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(text = namedDisease.iconEmoji, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = namedDisease.displayName,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFC2410C)
+                            )
+                        }
                     }
-
-                    Surface(
-                        shape = CircleShape,
-                        color = if (pet.isSleeping) Color(0xFF334155) else Color.White,
-                        modifier = Modifier
-                            .size(7.dp)
-                            .offset(y = (-2).dp)
-                    ) {}
+                } else {
+                    HealthConditionBadge(healthState = healthState)
                 }
             }
         }
 
-        // Living Pet Avatar
+        // Camada 4 — bichinho (abaixo do balão)
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -781,6 +790,76 @@ private fun PetLivingStage(
                 isInteracting = autonomousState.isSquishing,
                 showBubbles = isBathing
             )
+        }
+
+        // Camada 5 — balão próximo ao pet (não invade a faixa decorativa superior)
+        // ~15% do topo reservado a janelas, céu, armários e elementos de cenário
+        val sceneryProtectTop = maxHeight * 0.15f
+        val gapAboveHead = 28.dp // entre 20 e 40 dp acima da cabeça
+        val estimatedBubbleBodyHeight = 48.dp // corpo compacto (até 3 linhas)
+        val arrowSlotHeight = 8.dp
+        val bubbleMaxWidth = 168.dp
+        val bubbleMaxHeight = 64.dp
+
+        val bubbleX = (animatedPetX + (petSize / 2f) - (bubbleMaxWidth / 2f))
+            .coerceIn(8.dp, (maxWidth - bubbleMaxWidth - 8.dp).coerceAtLeast(8.dp))
+
+        // Âncora: base do balão (com seta) fica ~gapAboveHead acima do topo do pet
+        val preferredBubbleY =
+            animatedPetY - gapAboveHead - estimatedBubbleBodyHeight - arrowSlotHeight
+        val maxBubbleY = (animatedPetY - gapAboveHead - arrowSlotHeight)
+            .coerceAtLeast(sceneryProtectTop)
+        val bubbleY = preferredBubbleY.coerceIn(sceneryProtectTop, maxBubbleY)
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = bubbleX, y = bubbleY)
+                .heightIn(max = bubbleMaxHeight + arrowSlotHeight)
+                .testTag("thought_bubble_slot")
+        ) {
+            AnimatedVisibility(
+                visible = autonomousState.speechBubbleVisible && autonomousState.currentSpeechText.isNotBlank(),
+                enter = fadeIn() + scaleIn(initialScale = 0.85f),
+                exit = fadeOut() + scaleOut(targetScale = 0.85f)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (pet.isSleeping) Color(0xFF334155) else Color.White,
+                        shadowElevation = 5.dp,
+                        modifier = Modifier
+                            .widthIn(max = bubbleMaxWidth)
+                            .heightIn(max = bubbleMaxHeight)
+                            .testTag("thought_bubble")
+                    ) {
+                        Text(
+                            text = autonomousState.currentSpeechText,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
+                            color = if (pet.isSleeping) Color.White else Color(0xFF1E293B),
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            textAlign = TextAlign.Center,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // Seta apontando para o personagem
+                    Surface(
+                        shape = CircleShape,
+                        color = if (pet.isSleeping) Color(0xFF334155) else Color.White,
+                        modifier = Modifier
+                            .size(6.dp)
+                            .offset(y = (-2).dp)
+                    ) {}
+                }
+            }
         }
 
         // Minigames shortcut in Garage or when pet is bored / awake
@@ -839,7 +918,14 @@ private fun PetStatsPanel(
                 CompactStatRow("Energia", pet.energy, Icons.Rounded.Bolt, Color(0xFFEAB308), isSleeping)
                 CompactStatRow("Felicidade", pet.happiness, Icons.Rounded.SentimentSatisfiedAlt, Color(0xFFEC4899), isSleeping)
                 CompactStatRow("Higiene", pet.hygiene, Icons.Rounded.Bathtub, Color(0xFF06B6D4), isSleeping)
-                CompactStatRow("Saúde", pet.health, Icons.Rounded.Favorite, Color(0xFFEF4444), isSleeping)
+                CompactStatRow(
+                    label = "Saúde",
+                    value = pet.health,
+                    icon = Icons.Rounded.Favorite,
+                    color = Color(0xFFEF4444),
+                    isSleeping = isSleeping,
+                    statusSuffix = healthBarStatusSuffix(pet)
+                )
             } else {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     StatBar(
@@ -874,7 +960,8 @@ private fun PetStatsPanel(
                         label = "Saúde",
                         value = pet.health,
                         icon = Icons.Rounded.Favorite,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        statusSuffix = healthBarStatusSuffix(pet)
                     )
                     Box(modifier = Modifier.weight(1f))
                 }
@@ -889,7 +976,8 @@ private fun CompactStatRow(
     value: Int,
     icon: ImageVector,
     color: Color,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    statusSuffix: String? = null
 ) {
     Row(
         modifier = Modifier
@@ -922,12 +1010,14 @@ private fun CompactStatRow(
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            text = "$value%",
+            text = if (statusSuffix != null) "$value • $statusSuffix" else "$value%",
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             color = if (isSleeping) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(32.dp),
-            textAlign = TextAlign.End
+            modifier = Modifier.widthIn(min = 32.dp),
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

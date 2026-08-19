@@ -91,6 +91,24 @@ object PetHealthRules {
 
     fun getHealthState(health: Int): PetHealthState = PetHealthState.fromHealth(health)
 
+    /**
+     * True apenas na transição Saudável/Indisposto → Doente/Crítico
+     * (para toast/SFX únicos, sem repetir a cada tick).
+     */
+    fun shouldAnnounceIllnessTransition(from: PetHealthState?, to: PetHealthState): Boolean {
+        if (from == null) return false
+        val enteredIllness = to == PetHealthState.DOENTE || to == PetHealthState.CRITICO
+        val wasOk = from == PetHealthState.SAUDAVEL || from == PetHealthState.INDISPOSTO
+        return enteredIllness && wasOk
+    }
+
+    fun isRecoveredFromIllness(from: PetHealthState?, to: PetHealthState): Boolean {
+        if (from == null) return false
+        val wasIll = from == PetHealthState.DOENTE || from == PetHealthState.CRITICO
+        val nowOk = to == PetHealthState.SAUDAVEL || to == PetHealthState.INDISPOSTO
+        return wasIll && nowOk
+    }
+
     // Exposure limits to prevent instant random disease
     const val LOW_HYGIENE_EXPOSURE_LIMIT = 6 // 6 cycles/minutes in critical hygiene
     const val EXHAUSTION_COUNT_LIMIT = 3 // 3 cycles/occurrences of zero/critical energy

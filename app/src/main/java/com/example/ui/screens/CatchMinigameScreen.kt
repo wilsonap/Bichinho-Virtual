@@ -1,51 +1,70 @@
 package com.example.ui.screens
 
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.ArrowForwardIos
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.GameAudioManager
 import com.example.audio.SoundEffect
-import kotlinx.coroutines.delay
-import kotlin.math.abs
-import kotlin.random.Random
+import com.example.game.catchgame.CatchGameEngine
+import com.example.game.catchgame.CatchGameEvent
+import kotlinx.coroutines.isActive
 
-data class FallingItem(
-    val id: Long,
-    var x: Float,
-    var y: Float,
-    val type: CatchItemType,
-    val speed: Float = 6f
-)
-
-enum class CatchItemType(val emoji: String, val points: Int, val isBomb: Boolean) {
-    APPLE("🍎", 10, false),
-    COOKIE("🍪", 15, false),
-    STAR("⭐", 25, false),
-    COIN("🪙", 20, false),
-    BOMB("💣", -1, true)
-}
+private const val HUD_UPDATE_INTERVAL_SEC = 0.1f // ~10 Hz
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,95 +73,105 @@ fun CatchMinigameScreen(
     onFinishGame: (score: Int, coins: Int) -> Unit
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val audioManager = remember { GameAudioManager.getInstance(context) }
-    var isRunning by remember { mutableStateOf(true) }
-    var isGameOver by remember { mutableStateOf(false) }
+    val engine = remember { CatchGameEngine() }
 
-    var petNormalizedX by remember { mutableFloatStateOf(0.5f) } // 0.0 to 1.0
-    var score by remember { mutableIntStateOf(0) }
-    var coinsEarned by remember { mutableIntStateOf(0) }
-    var lives by remember { mutableIntStateOf(3) }
-    var combo by remember { mutableIntStateOf(0) }
+    val skyBrush = remember {
+        Brush.verticalGradient(
+            listOf(Color(0xFFFEF08A), Color(0xFFFDE047), Color(0xFFF59E0B))
+        )
+    }
+    val groundColor = remember { Color(0xFF78350F).copy(alpha = 0.3f) }
+    val petBodyColor = remember { Color(0xFF3B82F6) }
+    val petStrokeColor = remember { Color(0xFF1E3A8A) }
+    val whiteColor = remember { Color.White }
+    val blackColor = remember { Color.Black }
 
-    val fallingItems = remember { mutableStateListOf<FallingItem>() }
-    var nextItemId by remember { mutableLongStateOf(0L) }
+    val emojiPaint = remember {
+        AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            textAlign = AndroidPaint.Align.CENTER
+            typeface = Typeface.DEFAULT
+        }
+    }
+    val emojiTextSizePx = with(density) { 28.sp.toPx() }
+    val petStroke = remember(density) {
+        Stroke(width = with(density) { 3.dp.toPx() })
+    }
+    val bodyRadiusPx = with(density) { 26.dp.toPx() }
+    val eyeOffsetX = with(density) { 8.dp.toPx() }
+    val eyeOffsetY = with(density) { 6.dp.toPx() }
+    val eyeRadiusPx = with(density) { 5.dp.toPx() }
+    val pupilRadiusPx = with(density) { 2.5.dp.toPx() }
 
-    fun restartGame() {
-        petNormalizedX = 0.5f
-        score = 0
-        coinsEarned = 0
-        lives = 3
-        combo = 0
-        fallingItems.clear()
-        isGameOver = false
-        isRunning = true
+    var frameEpoch by remember { mutableIntStateOf(0) }
+
+    var hudScore by remember { mutableIntStateOf(0) }
+    var hudCoins by remember { mutableIntStateOf(0) }
+    var hudLives by remember { mutableIntStateOf(CatchGameEngine.INITIAL_LIVES) }
+    var hudCombo by remember { mutableIntStateOf(0) }
+
+    var isGameOverUi by remember { mutableStateOf(false) }
+    var finishReported by remember { mutableStateOf(false) }
+
+    fun syncHudFromEngine() {
+        hudScore = engine.score
+        hudCoins = engine.coinsEarned
+        hudLives = engine.lives
+        hudCombo = engine.combo
     }
 
-    // Game loop
-    LaunchedEffect(isRunning, isGameOver) {
-        var tick = 0
-        while (isRunning && !isGameOver) {
-            delay(20) // ~50 fps
-            tick++
+    fun restartGame() {
+        engine.reset()
+        syncHudFromEngine()
+        isGameOverUi = false
+        finishReported = false
+        frameEpoch++
+    }
 
-            // Spawn falling item every 35-45 ticks
-            if (tick % 35 == 0) {
-                val isBomb = Random.nextInt(100) < 25
-                val type = if (isBomb) CatchItemType.BOMB else listOf(CatchItemType.APPLE, CatchItemType.COOKIE, CatchItemType.STAR, CatchItemType.COIN).random()
-                fallingItems.add(
-                    FallingItem(
-                        id = nextItemId++,
-                        x = Random.nextFloat().coerceIn(0.1f, 0.9f),
-                        y = -0.05f,
-                        type = type,
-                        speed = Random.nextFloat() * 0.004f + 0.008f
-                    )
-                )
-            }
+    LaunchedEffect(Unit) {
+        var lastFrameNanos = 0L
+        var hudAccum = 0f
 
-            // Update items position
-            val iterator = fallingItems.iterator()
-            while (iterator.hasNext()) {
-                val item = iterator.next()
-                item.y += item.speed
-
-                // Check Catch at bottom (Y between 0.78 and 0.88)
-                if (item.y in 0.78f..0.88f) {
-                    val dist = abs(item.x - petNormalizedX)
-                    if (dist < 0.12f) {
-                        // Caught!
-                        if (item.type.isBomb) {
-                            audioManager.playSfx(SoundEffect.PET_SAD)
-                            lives -= 1
-                            combo = 0
-                            if (lives <= 0) {
-                                audioManager.playSfx(SoundEffect.PET_SICK)
-                                isGameOver = true
-                                isRunning = false
-                                onFinishGame(score, coinsEarned)
-                            }
-                        } else {
-                            if (item.type == CatchItemType.COIN) {
-                                audioManager.playSfx(SoundEffect.COIN)
-                                coinsEarned += 2
-                            } else {
-                                audioManager.playSfx(SoundEffect.TAP)
-                                coinsEarned += 1
-                            }
-                            score += item.type.points
-                            combo += 1
-                        }
-                        iterator.remove()
-                        continue
-                    }
+        while (isActive) {
+            withFrameNanos { frameTimeNanos ->
+                if (lastFrameNanos == 0L) {
+                    lastFrameNanos = frameTimeNanos
+                    return@withFrameNanos
                 }
 
-                // Missed bottom
-                if (item.y > 1.05f) {
-                    if (!item.type.isBomb) {
-                        combo = 0
+                val rawDt = (frameTimeNanos - lastFrameNanos) / 1_000_000_000f
+                lastFrameNanos = frameTimeNanos
+                val dt = rawDt.coerceIn(0f, CatchGameEngine.MAX_DT_SECONDS)
+
+                if (!engine.isGameOver) {
+                    val events = engine.update(dt)
+                    for (event in events) {
+                        when (event) {
+                            CatchGameEvent.COIN_CATCH ->
+                                audioManager.playSfx(SoundEffect.COIN)
+                            CatchGameEvent.GOOD_CATCH ->
+                                audioManager.playSfx(SoundEffect.TAP)
+                            CatchGameEvent.BOMB_HIT ->
+                                audioManager.playSfx(SoundEffect.PET_SAD)
+                            CatchGameEvent.GAME_OVER ->
+                                audioManager.playSfx(SoundEffect.PET_SICK)
+                        }
                     }
-                    iterator.remove()
+                    frameEpoch++
+
+                    hudAccum += dt
+                    if (hudAccum >= HUD_UPDATE_INTERVAL_SEC) {
+                        hudAccum = 0f
+                        syncHudFromEngine()
+                    }
+
+                    if (engine.isGameOver && !finishReported) {
+                        finishReported = true
+                        isGameOverUi = true
+                        syncHudFromEngine()
+                        onFinishGame(engine.score, engine.coinsEarned)
+                    }
                 }
             }
         }
@@ -158,7 +187,10 @@ fun CatchMinigameScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { restartGame() }, modifier = Modifier.testTag("restart_catch_button")) {
+                    IconButton(
+                        onClick = { restartGame() },
+                        modifier = Modifier.testTag("restart_catch_button")
+                    ) {
                         Icon(Icons.Rounded.Refresh, contentDescription = "Reiniciar")
                     }
                 }
@@ -169,9 +201,8 @@ fun CatchMinigameScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFFDE047), Color(0xFFF59E0B))))
+                .background(skyBrush)
         ) {
-            // Top HUD
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -179,7 +210,6 @@ fun CatchMinigameScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Lives
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White.copy(alpha = 0.9f)
@@ -189,19 +219,21 @@ fun CatchMinigameScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         repeat(3) { i ->
-                            Text(text = if (i < lives) "❤️" else "🖤", fontSize = 16.sp)
+                            Text(
+                                text = if (i < hudLives) "❤️" else "🖤",
+                                fontSize = 16.sp
+                            )
                         }
                     }
                 }
 
-                // Score & Coins
                 Row {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White.copy(alpha = 0.9f)
                     ) {
                         Text(
-                            text = "Pontos: $score",
+                            text = "Pontos: $hudScore",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFB45309),
@@ -220,7 +252,7 @@ fun CatchMinigameScreen(
                             Text(text = "🪙", fontSize = 16.sp)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "$coinsEarned",
+                                text = "$hudCoins",
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF78350F)
                             )
@@ -229,7 +261,6 @@ fun CatchMinigameScreen(
                 }
             }
 
-            // Canvas & Falling Objects
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -238,65 +269,73 @@ fun CatchMinigameScreen(
                         detectDragGestures { change, dragAmount ->
                             change.consume()
                             val deltaNormalized = dragAmount.x / size.width
-                            petNormalizedX = (petNormalizedX + deltaNormalized).coerceIn(0.1f, 0.9f)
+                            engine.setPetNormalizedX(engine.petNormalizedX + deltaNormalized)
+                            // Redraw imediato do pet sem recompor HUD
+                            frameEpoch++
                         }
                     }
                     .testTag("catch_canvas_box")
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
+                    @Suppress("UNUSED_EXPRESSION")
+                    frameEpoch
+
                     val w = size.width
                     val h = size.height
 
-                    // Ground
                     drawRect(
-                        color = Color(0xFF78350F).copy(alpha = 0.3f),
+                        color = groundColor,
                         topLeft = Offset(0f, h * 0.9f),
-                        size = androidx.compose.ui.geometry.Size(w, h * 0.1f)
+                        size = Size(w, h * 0.1f)
                     )
 
-                    // Draw Pet Basket / Catcher at petNormalizedX
-                    val basketX = petNormalizedX * w
-                    val basketY = h * 0.84f
-
-                    // Pet Catcher Body
-                    drawCircle(
-                        color = Color(0xFF3B82F6),
-                        radius = 26.dp.toPx(),
-                        center = Offset(basketX, basketY)
-                    )
-                    drawCircle(
-                        color = Color(0xFF1E3A8A),
-                        radius = 26.dp.toPx(),
-                        center = Offset(basketX, basketY),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx())
-                    )
-                    // Cute Eyes
-                    drawCircle(Color.White, radius = 5.dp.toPx(), center = Offset(basketX - 8.dp.toPx(), basketY - 6.dp.toPx()))
-                    drawCircle(Color.White, radius = 5.dp.toPx(), center = Offset(basketX + 8.dp.toPx(), basketY - 6.dp.toPx()))
-                    drawCircle(Color.Black, radius = 2.5.dp.toPx(), center = Offset(basketX - 8.dp.toPx(), basketY - 6.dp.toPx()))
-                    drawCircle(Color.Black, radius = 2.5.dp.toPx(), center = Offset(basketX + 8.dp.toPx(), basketY - 6.dp.toPx()))
-                }
-
-                // Render Emojis for falling items
-                fallingItems.forEach { item ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .offset(
-                                    x = (item.x * 320).dp,
-                                    y = (item.y * 500).dp
-                                )
-                        ) {
-                            Text(text = item.type.emoji, fontSize = 28.sp)
+                    val items = engine.fallingItems
+                    emojiPaint.textSize = emojiTextSizePx
+                    drawIntoCanvas { canvas ->
+                        val native = canvas.nativeCanvas
+                        for (index in items.indices) {
+                            val item = items[index]
+                            native.drawText(
+                                item.type.emoji,
+                                item.x * w,
+                                item.y * h,
+                                emojiPaint
+                            )
                         }
                     }
+
+                    val basketX = engine.petNormalizedX * w
+                    val basketY = h * 0.84f
+
+                    drawCircle(petBodyColor, radius = bodyRadiusPx, center = Offset(basketX, basketY))
+                    drawCircle(
+                        petStrokeColor,
+                        radius = bodyRadiusPx,
+                        center = Offset(basketX, basketY),
+                        style = petStroke
+                    )
+                    drawCircle(
+                        whiteColor,
+                        radius = eyeRadiusPx,
+                        center = Offset(basketX - eyeOffsetX, basketY - eyeOffsetY)
+                    )
+                    drawCircle(
+                        whiteColor,
+                        radius = eyeRadiusPx,
+                        center = Offset(basketX + eyeOffsetX, basketY - eyeOffsetY)
+                    )
+                    drawCircle(
+                        blackColor,
+                        radius = pupilRadiusPx,
+                        center = Offset(basketX - eyeOffsetX, basketY - eyeOffsetY)
+                    )
+                    drawCircle(
+                        blackColor,
+                        radius = pupilRadiusPx,
+                        center = Offset(basketX + eyeOffsetX, basketY - eyeOffsetY)
+                    )
                 }
 
-                // Control Buttons for easy touch
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -305,22 +344,31 @@ fun CatchMinigameScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     FilledTonalIconButton(
-                        onClick = { petNormalizedX = (petNormalizedX - 0.12f).coerceIn(0.1f, 0.9f) },
-                        modifier = Modifier.size(56.dp).testTag("move_left_button")
+                        onClick = {
+                            engine.nudgePet(-CatchGameEngine.PET_NUDGE)
+                            frameEpoch++
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .testTag("move_left_button")
                     ) {
                         Icon(Icons.Rounded.ArrowBackIosNew, contentDescription = "Esquerda")
                     }
 
                     FilledTonalIconButton(
-                        onClick = { petNormalizedX = (petNormalizedX + 0.12f).coerceIn(0.1f, 0.9f) },
-                        modifier = Modifier.size(56.dp).testTag("move_right_button")
+                        onClick = {
+                            engine.nudgePet(CatchGameEngine.PET_NUDGE)
+                            frameEpoch++
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .testTag("move_right_button")
                     ) {
                         Icon(Icons.Rounded.ArrowForwardIos, contentDescription = "Direita")
                     }
                 }
 
-                // Game Over Overlay
-                if (isGameOver) {
+                if (isGameOverUi) {
                     Card(
                         shape = RoundedCornerShape(24.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -335,14 +383,28 @@ fun CatchMinigameScreen(
                             modifier = Modifier.padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(text = "🎮 Fim de Jogo!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                            Text(
+                                text = "🎮 Fim de Jogo!",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold
+                            )
                             Spacer(modifier = Modifier.height(10.dp))
-                            Text(text = "Pontuação Total: $score pts", style = MaterialTheme.typography.bodyLarge)
-                            Text(text = "Moedas Ganhas: +$coinsEarned 🪙", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
+                            Text(
+                                text = "Pontuação Total: $hudScore pts",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "Moedas Ganhas: +$hudCoins 🪙",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFD97706)
+                            )
                             Spacer(modifier = Modifier.height(20.dp))
                             Button(
                                 onClick = { restartGame() },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text("Jogar Novamente", fontWeight = FontWeight.Bold)
