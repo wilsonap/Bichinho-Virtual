@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
 import java.util.Calendar
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class SleepSystemTest {
 
     private lateinit var context: Context
@@ -159,16 +159,15 @@ class SleepSystemTest {
         assertTrue(simulated.isSleeping) // Must still be sleeping during night!
     }
 
-    // 6. Despertar automático às 08:00
+    // 6. Despertar automático às 07:30
     @Test
-    fun testAutoAwakeningAt0800EndsNightSleep() {
+    fun testAutoAwakeningAt0730EndsNightSleep() {
         val t2200 = getTimestampForHour(0, 22, 0)
-        val t0800 = getTimestampForHour(1, 8, 0) // Exactly 08:00
+        val t0730 = getTimestampForHour(1, 7, 30)
         val pet = createTestPet(energy = 80, isSleeping = true, lastUpdate = t2200)
 
-        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0800)
+        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0730)
 
-        // At 08:00, night sleep ends automatically!
         assertEquals(100, simulated.energy)
         assertFalse(simulated.isSleeping)
     }
@@ -184,24 +183,23 @@ class SleepSystemTest {
 
         // 18:00 to 22:00 (240 mins awake) -> energy drops from 80 by 40 -> 40
         // 22:00 to 23:00 (60 mins night sleep) -> energy gains 30 -> ~70-72
-        // At 23:00, pet is in night sleep
         assertTrue("Energia recuperada durante a noite", simulated.energy in 70..72)
         assertTrue(simulated.isSleeping)
     }
 
-    // 8. App aberto depois das 08:00 (ex: 10:00) após noite completa
+    // 8. App aberto depois das 07:30 (ex: 10:00) após noite completa
     @Test
-    fun testAppOpenedAfter0800FollowingFullNight() {
+    fun testAppOpenedAfter0730FollowingFullNight() {
         val t1800 = getTimestampForHour(0, 18, 0)
-        val t1000 = getTimestampForHour(1, 10, 0) // 16 hours later
+        val t1000 = getTimestampForHour(1, 10, 0)
         val pet = createTestPet(energy = 80, isSleeping = false, lastUpdate = t1800)
 
         val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t1000)
 
-        // 18:00-22:00 (240 min awake): energy drops to 40
-        // 22:00-08:00 (600 min night sleep): energy recovers to 100 and stays 100, pet wakes at 08:00
-        // 08:00-10:00 (120 min day awake): energy drops from 100 by 20 -> 80
-        assertEquals(80, simulated.energy)
+        // 18:00-22:00 (240 min): energy -> 40
+        // 22:00-07:30 (570 min night): energy -> 100, wake at 07:30
+        // 07:30-10:00 (150 min day): energy -25 -> 75
+        assertEquals(75, simulated.energy)
         assertFalse(simulated.isSleeping)
     }
 
@@ -222,26 +220,24 @@ class SleepSystemTest {
     @Test
     fun testNighttimeHungerDecayRate() {
         val t2200 = getTimestampForHour(0, 22, 0)
-        val t0800 = getTimestampForHour(1, 8, 0) // 600 minutes of night sleep
+        val t0730 = getTimestampForHour(1, 7, 30) // 570 minutes of night sleep
         val pet = createTestPet(hunger = 90, energy = 50, isSleeping = true, lastUpdate = t2200)
 
-        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0800)
+        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0730)
 
-        // 600 mins at 0.1/min = ~60 hunger loss -> 90 - 60 = 30
-        assertTrue("Fome após madrugada", simulated.hunger in 30..31)
+        // 570 mins / 10 = 57 hunger loss -> 90 - 57 = 33
+        assertTrue("Fome após madrugada", simulated.hunger in 33..34)
     }
 
     // 11. Ausência de dano de saúde pela madrugada
     @Test
     fun testNoHealthDamageDuringNighttime() {
         val t2200 = getTimestampForHour(0, 22, 0)
-        val t0800 = getTimestampForHour(1, 8, 0)
-        // Pet starts night with low hunger (10) and low hygiene (10)
+        val t0730 = getTimestampForHour(1, 7, 30)
         val pet = createTestPet(hunger = 10, hygiene = 10, health = 100, isSleeping = true, lastUpdate = t2200)
 
-        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0800)
+        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0730)
 
-        // Protected night sleep: Zero health damage from hunger or hygiene!
         assertEquals(100, simulated.health)
     }
 
@@ -251,22 +247,21 @@ class SleepSystemTest {
         val t0300 = getTimestampForHour(0, 3, 0)
         val pet = createTestPet(hunger = 10, hygiene = 10, energy = 10, health = 10, lastUpdate = t0300)
 
-        // During night, estimateMinutesUntilNextThreshold delays until 08:00
-        val delayMinutes = PetStatsCalculator.estimateMinutesUntilNextThreshold(pet, t0300)
-        // 03:00 to 08:00 = 5 hours = 300 minutes
-        assertEquals(300L, delayMinutes)
+        val estimate = PetStatsCalculator.estimateMinutesUntilNextThreshold(pet, t0300)
+        // 03:00 to 07:30 = 4.5 hours = 270 minutes
+        assertEquals("QUIET_UNTIL_0730", estimate.reason)
+        assertEquals(270L, estimate.delayMinutes)
     }
 
-    // 13. Retorno das regras normais depois das 08:00
+    // 13. Retorno das regras normais depois das 07:30
     @Test
-    fun testDaytimeRulesResumeAfter0800() {
-        val t0800 = getTimestampForHour(0, 8, 0)
-        val t1000 = getTimestampForHour(0, 10, 0) // 120 mins daytime awake
-        val pet = createTestPet(hunger = 15, hygiene = 90, health = 100, energy = 100, isSleeping = false, lastUpdate = t0800)
+    fun testDaytimeRulesResumeAfter0730() {
+        val t0730 = getTimestampForHour(0, 7, 30)
+        val t0930 = getTimestampForHour(0, 9, 30) // 120 mins daytime awake
+        val pet = createTestPet(hunger = 15, hygiene = 90, health = 100, energy = 100, isSleeping = false, lastUpdate = t0730)
 
-        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t1000)
+        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0930)
 
-        // Daytime health decay resumes because hunger < 20 (120 mins / 10 = 12 loss -> 88)
         assertEquals(88, simulated.health)
         assertEquals(80, simulated.energy)
         assertFalse(simulated.isSleeping)
@@ -281,39 +276,36 @@ class SleepSystemTest {
     }
 
     /**
-     * Live (app aberto): último tick às 07:59 (noite) → tick às 08:00 deve acordar
-     * independentemente da energia (paridade com offline).
+     * Live: último tick às 07:29 (noite) → tick às 07:30 deve acordar
+     * independentemente da energia.
      */
     @Test
-    fun testLiveTickAutoAwakeningAt0800RegardlessOfEnergy() = runBlocking {
-        val t0759 = getTimestampForHour(0, 7, 59)
-        val t0800 = getTimestampForHour(0, 8, 0)
-        // Energia baixa de propósito: antes da correção o live só acordava em 100%
-        val pet = createTestPet(energy = 40, isSleeping = true, lastUpdate = t0759)
+    fun testLiveTickAutoAwakeningAt0730RegardlessOfEnergy() = runBlocking {
+        val t0729 = getTimestampForHour(0, 7, 29)
+        val t0730 = getTimestampForHour(0, 7, 30)
+        val pet = createTestPet(energy = 40, isSleeping = true, lastUpdate = t0729)
         petDao.insertOrUpdatePet(pet)
 
-        val updated = repository.tickLiveStats(now = t0800)
+        val updated = repository.tickLiveStats(now = t0730)
 
         assertNotNull(updated)
         assertFalse(
-            "Às 08:00 o pet deve acordar no tick live mesmo com energia < 100",
+            "Às 07:30 o pet deve acordar no tick live mesmo com energia < 100",
             updated!!.isSleeping
         )
-        // Após acordar, o mesmo tick aplica decay diurno (-1 energia). Sem bônus de wakeUpPet.
         assertEquals(39, updated.energy)
     }
 
     /**
-     * Offline (app fechado): 07:59 → 08:00 também acorda com energia < 100.
-     * Garante o mesmo comportamento do cenário live acima.
+     * Offline: 07:29 → 07:30 também acorda com energia < 100.
      */
     @Test
-    fun testOfflineAutoAwakeningAt0800RegardlessOfEnergy() {
-        val t0759 = getTimestampForHour(0, 7, 59)
-        val t0800 = getTimestampForHour(0, 8, 0)
-        val pet = createTestPet(energy = 40, isSleeping = true, lastUpdate = t0759)
+    fun testOfflineAutoAwakeningAt0730RegardlessOfEnergy() {
+        val t0729 = getTimestampForHour(0, 7, 29)
+        val t0730 = getTimestampForHour(0, 7, 30)
+        val pet = createTestPet(energy = 40, isSleeping = true, lastUpdate = t0729)
 
-        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0800)
+        val simulated = PetStatsCalculator.calculateSimulatedStats(pet, t0730)
 
         assertFalse(simulated.isSleeping)
         assertEquals(40, simulated.energy)

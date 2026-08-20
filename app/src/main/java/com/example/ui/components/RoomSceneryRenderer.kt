@@ -66,6 +66,7 @@ fun RoomSceneryRenderer(
             HouseRoom.BATHROOM -> drawBathroomScene(w, h, ambientPhase, pulseProgress, isSleeping)
             HouseRoom.BACKYARD -> drawBackyardScene(w, h, ambientPhase, pulseProgress, isSleeping)
             HouseRoom.GARAGE -> drawGarageScene(w, h, ambientPhase, pulseProgress, isSleeping)
+            HouseRoom.SCHOOL -> drawSchoolScene(w, h, ambientPhase, pulseProgress, isSleeping)
             HouseRoom.BEDROOM -> {
                 when (themeId) {
                     "decor_forest" -> drawMagicForestScene(w, h, ambientPhase, pulseProgress, isSleeping)

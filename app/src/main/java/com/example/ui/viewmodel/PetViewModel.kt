@@ -117,6 +117,10 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
             val pet = repository.getPet()
             if (pet != null && pet.isHatched) {
                 val wasLonging = repository.updateOfflineStats(pet)
+                if (repository.consumePendingSchoolReturnMessage()) {
+                    _toastMessage.value = "🎒 Voltei da escola!"
+                    PetCareScheduler.scheduleNextCheck(application)
+                }
                 if (wasLonging) {
                     triggerLongingGreeting(pet)
                 }
@@ -305,6 +309,24 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                     continue
                 }
 
+                // Escola: comportamento estudando
+                if (currentPet.isAtSchool) {
+                    _autonomousState.update {
+                        it.copy(
+                            behaviorState = PetBehaviorState.ESTUDANDO,
+                            currentSpeechText = listOf(
+                                "Prestando atenção na aula... 📚",
+                                "Anotando tudo! ✏️",
+                                "Que matéria interessante! 🎒"
+                            ).random(),
+                            walkOffsetX = 0f,
+                            targetOffsetX = 0f,
+                            speechBubbleVisible = true
+                        )
+                    }
+                    continue
+                }
+
                 // If pet is sleeping
                 if (currentPet.isSleeping) {
                     val isNight = PetStatsCalculator.isNightTime()
@@ -449,6 +471,17 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                 delay(tickDelay)
                 if (pet != null && pet.isHatched) {
                     repository.tickLiveStats()
+                    if (repository.consumePendingSchoolReturnMessage()) {
+                        _toastMessage.value = "🎒 Voltei da escola!"
+                        PetCareScheduler.scheduleNextCheck(getApplication())
+                        _autonomousState.update {
+                            it.copy(
+                                behaviorState = PetBehaviorState.FELIZ,
+                                currentSpeechText = "Aprendi muita coisa hoje! 📚",
+                                speechBubbleVisible = true
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -590,6 +623,10 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     fun feed(foodItem: ShopItem?) {
         audioManager.playSfx(SoundEffect.FEED)
         viewModelScope.launch {
+            if (petState.value?.isAtSchool == true) {
+                _toastMessage.value = "Não posso comer na escola agora! 📚"
+                return@launch
+            }
             _autonomousState.update {
                 it.copy(
                     behaviorState = PetBehaviorState.COMENDO,
@@ -619,6 +656,10 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     fun bathe() {
         audioManager.playSfx(SoundEffect.BATH)
         viewModelScope.launch {
+            if (petState.value?.isAtSchool == true) {
+                _toastMessage.value = "Estou na escola agora! 📚"
+                return@launch
+            }
             _isBathingAnimation.value = true
             _autonomousState.update {
                 it.copy(
@@ -679,11 +720,35 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun sendToSchool() {
+        viewModelScope.launch {
+            val pet = petState.value ?: return@launch
+            if (pet.isAtSchool) {
+                _toastMessage.value = PetSchoolRules.formatSchoolUntilLabel(pet.schoolEndTimestamp)
+                return@launch
+            }
+            val result = repository.sendPetToSchool()
+            _toastMessage.value = result.message
+            if (result.success) {
+                PetCareScheduler.scheduleNextCheck(getApplication())
+                _autonomousState.update {
+                    it.copy(
+                        behaviorState = PetBehaviorState.ESTUDANDO,
+                        currentSpeechText = "Indo para a escola! 🎒",
+                        speechBubbleVisible = true,
+                        walkOffsetX = 0f,
+                        targetOffsetX = 0f
+                    )
+                }
+            }
+        }
+    }
+
     fun wakeUpPet() {
         viewModelScope.launch {
             val pet = petState.value ?: return@launch
             if (PetStatsCalculator.isNightTime()) {
-                _toastMessage.value = "Shhh... Horário de descanso noturno (22h às 08h) 💤"
+                _toastMessage.value = "Shhh... Horário de descanso noturno (22h às 07h30) 💤"
                 return@launch
             }
             if (pet.isSleeping) {
@@ -695,8 +760,12 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleSleep() {
         viewModelScope.launch {
             val currentPet = petState.value ?: return@launch
+            if (currentPet.isAtSchool) {
+                _toastMessage.value = "Não dá para dormir na escola! 📚"
+                return@launch
+            }
             if (PetStatsCalculator.isNightTime()) {
-                _toastMessage.value = "Shhh... Horário de descanso noturno (22h às 08h) 💤"
+                _toastMessage.value = "Shhh... Horário de descanso noturno (22h às 07h30) 💤"
                 _autonomousState.update {
                     it.copy(
                         behaviorState = PetBehaviorState.DORMINDO,

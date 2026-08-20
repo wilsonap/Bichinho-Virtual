@@ -204,17 +204,38 @@ class PetRepository(private val dao: PetDao) {
         }
     }
 
+    /**
+     * @return true se houve saudade (longing) após o catch-up offline.
+     */
     suspend fun updateOfflineStats(pet: PetEntity): Boolean {
         if (!pet.isHatched) return false
 
         val now = System.currentTimeMillis()
         val simulated = com.example.notification.PetStatsCalculator.calculateSimulatedStats(pet, now)
-        if (simulated.elapsedMinutes <= 0) return false
+        if (simulated.elapsedMinutes <= 0 &&
+            simulated.completedSchoolEndTimestamp == 0L &&
+            simulated.isAtSchool == pet.isAtSchool
+        ) {
+            return false
+        }
+
+        var happiness = simulated.happiness
+        var expDelta = 0
+        var coinsDelta = 0
+        var lastRewardEnd = pet.lastSchoolRewardEndTimestamp
+        val schoolEnded = simulated.completedSchoolEndTimestamp
+
+        if (schoolEnded > 0L && lastRewardEnd != schoolEnded) {
+            happiness = min(100, happiness + PetSchoolRules.REWARD_HAPPINESS)
+            expDelta = PetSchoolRules.REWARD_XP
+            coinsDelta = PetSchoolRules.REWARD_COINS
+            lastRewardEnd = schoolEnded
+        }
 
         val updatedPet = pet.copy(
             hunger = simulated.hunger,
             energy = simulated.energy,
-            happiness = simulated.happiness,
+            happiness = happiness,
             hygiene = simulated.hygiene,
             health = simulated.health,
             disease = simulated.disease,
@@ -222,10 +243,43 @@ class PetRepository(private val dao: PetDao) {
             exhaustionCount = simulated.exhaustionCount,
             indigestionStreak = simulated.indigestionStreak,
             isSleeping = simulated.isSleeping,
+            isAtSchool = simulated.isAtSchool,
+            schoolEndTimestamp = if (simulated.isAtSchool) pet.schoolEndTimestamp else 0L,
+            lastSchoolRewardEndTimestamp = lastRewardEnd,
             lastUpdateTimestamp = now
         )
         dao.insertOrUpdatePet(updatedPet)
+
+        if (expDelta > 0) {
+            applyPetCare(
+                hungerDelta = 0,
+                energyDelta = 0,
+                happinessDelta = 0,
+                hygieneDelta = 0,
+                healthDelta = 0,
+                expDelta = expDelta
+            )
+        }
+        if (coinsDelta > 0) {
+            addCoins(coinsDelta)
+        }
+
+        // Sinaliza retorno escolar para a UI (toast) sem misturar com longing
+        if (schoolEnded > 0L) {
+            _pendingSchoolReturnMessage = true
+        }
+
         return simulated.wasLonging
+    }
+
+    @Volatile
+    private var _pendingSchoolReturnMessage: Boolean = false
+
+    /** Consome flag de retorno da escola (offline/live). */
+    fun consumePendingSchoolReturnMessage(): Boolean {
+        val pending = _pendingSchoolReturnMessage
+        _pendingSchoolReturnMessage = false
+        return pending
     }
 
     /**
@@ -234,6 +288,20 @@ class PetRepository(private val dao: PetDao) {
     suspend fun tickLiveStats(now: Long = System.currentTimeMillis()): PetEntity? {
         val pet = dao.getPet() ?: return null
         if (!pet.isHatched) return pet
+
+        // Escola ativa: congela atributos até o fim do turno
+        if (PetSchoolRules.isWithinSchoolSession(pet, now)) {
+            val frozen = pet.copy(lastUpdateTimestamp = now, isSleeping = false)
+            dao.insertOrUpdatePet(frozen)
+            return frozen
+        }
+
+        // Fim da escola (app aberto)
+        if (pet.isAtSchool && pet.schoolEndTimestamp > 0L && now >= pet.schoolEndTimestamp) {
+            val completed = completeSchoolSession(pet, now)
+            _pendingSchoolReturnMessage = true
+            return completed
+        }
 
         var hunger = pet.hunger
         var energy = pet.energy
@@ -248,7 +316,7 @@ class PetRepository(private val dao: PetDao) {
         val isNight = com.example.notification.PetStatsCalculator.isNightTime(now)
 
         if (isNight) {
-            // --- NIGHTTIME (22:00 to 08:00): Protected Rest Period ---
+            // --- NIGHTTIME (22:00 to 07:30): Protected Rest Period ---
             isSleeping = true // Pet is in night sleep
             energy = min(100, energy + 2) // Reaches up to 100 and stays sleeping!
 
@@ -260,14 +328,14 @@ class PetRepository(private val dao: PetDao) {
             // Health protected: zero damage from hunger or hygiene during night
             // Protected: no new disease during night
         } else {
-            // --- DAYTIME (08:00 to 22:00): Active / Nap Period ---
+            // --- DAYTIME (07:30 to 22:00): Active / Nap Period ---
             val wasNightAtLastUpdate =
                 com.example.notification.PetStatsCalculator.isNightTime(pet.lastUpdateTimestamp)
             if (isSleeping && wasNightAtLastUpdate) {
                 isSleeping = false
                 Log.d(
                     "SLEEP_AUDIT",
-                    "Auto-awakening pet at daytime start (08:00): night sleep ended (energy=$energy)"
+                    "Auto-awakening pet at daytime start (07:30): night sleep ended (energy=$energy)"
                 )
             }
 
@@ -327,6 +395,82 @@ class PetRepository(private val dao: PetDao) {
         )
         dao.insertOrUpdatePet(updated)
         return updated
+    }
+
+    /**
+     * Resultado de enviar à escola.
+     * @param message mensagem para toast/UI
+     */
+    data class SchoolActionResult(val success: Boolean, val message: String)
+
+    suspend fun sendPetToSchool(now: Long = System.currentTimeMillis()): SchoolActionResult {
+        val pet = dao.getPet() ?: return SchoolActionResult(false, "Nenhum bichinho encontrado.")
+        when (val eligibility = PetSchoolRules.canAttendSchool(pet, now)) {
+            is PetSchoolRules.Eligibility.Denied ->
+                return SchoolActionResult(false, eligibility.reason)
+            is PetSchoolRules.Eligibility.Allowed -> {
+                val updated = pet.copy(
+                    isAtSchool = true,
+                    schoolEndTimestamp = eligibility.endTimestamp,
+                    isSleeping = false,
+                    lastUpdateTimestamp = now
+                )
+                dao.insertOrUpdatePet(updated)
+                return SchoolActionResult(
+                    true,
+                    "🎒 Foi para a escola até ${eligibility.shift.endLabel()}!"
+                )
+            }
+        }
+    }
+
+    /**
+     * Finaliza sessão escolar, concede recompensa uma vez e volta para casa.
+     */
+    suspend fun completeSchoolSession(
+        pet: PetEntity,
+        now: Long = System.currentTimeMillis()
+    ): PetEntity {
+        val endTs = pet.schoolEndTimestamp
+        val alreadyRewarded = endTs > 0L && pet.lastSchoolRewardEndTimestamp == endTs
+
+        var happiness = pet.happiness
+        var lastReward = pet.lastSchoolRewardEndTimestamp
+        var expDelta = 0
+        var coinsDelta = 0
+
+        if (!alreadyRewarded && endTs > 0L) {
+            happiness = min(100, happiness + PetSchoolRules.REWARD_HAPPINESS)
+            expDelta = PetSchoolRules.REWARD_XP
+            coinsDelta = PetSchoolRules.REWARD_COINS
+            lastReward = endTs
+        }
+
+        val returned = pet.copy(
+            happiness = happiness,
+            isAtSchool = false,
+            schoolEndTimestamp = 0L,
+            lastSchoolRewardEndTimestamp = lastReward,
+            isSleeping = false,
+            lastUpdateTimestamp = now
+        )
+        dao.insertOrUpdatePet(returned)
+
+        if (expDelta > 0) {
+            applyPetCare(
+                hungerDelta = 0,
+                energyDelta = 0,
+                happinessDelta = 0,
+                hygieneDelta = 0,
+                healthDelta = 0,
+                expDelta = expDelta
+            )
+        }
+        if (coinsDelta > 0) {
+            addCoins(coinsDelta)
+        }
+
+        return dao.getPet() ?: returned
     }
 
     private suspend fun seedAchievementsIfNeeded() {
@@ -524,7 +668,7 @@ class PetRepository(private val dao: PetDao) {
 
         val now = System.currentTimeMillis()
         if (com.example.notification.PetStatsCalculator.isNightTime(now) && !force) {
-            Log.d("SLEEP_AUDIT", "wakeUpPet: Rejected because pet is in protected night sleep (22:00-08:00)")
+            Log.d("SLEEP_AUDIT", "wakeUpPet: Rejected because pet is in protected night sleep (22:00-07:30)")
             return false
         }
 

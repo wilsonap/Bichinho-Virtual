@@ -324,7 +324,7 @@ fun StatsScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = "🌙 Proteção Noturna (22h às 08h): Sem perda de saúde por fome/higiene e sem surgimento de doenças durante a noite.",
+                                text = "🌙 Proteção Noturna (22h às 07h30): Sem perda de saúde por fome/higiene e sem surgimento de doenças durante a noite.",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

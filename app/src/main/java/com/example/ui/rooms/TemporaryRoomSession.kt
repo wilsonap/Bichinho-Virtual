@@ -23,7 +23,7 @@ class TemporaryRoomSession(
 
     fun enter(room: HouseRoom, timeoutMs: Long) {
         if (isSleeping()) return
-        if (room == HouseRoom.BEDROOM || room == HouseRoom.LIVING_ROOM) return
+        if (room == HouseRoom.BEDROOM || room == HouseRoom.LIVING_ROOM || room == HouseRoom.SCHOOL) return
 
         activeTemporaryRoom = room
         setCurrentRoom(room)
@@ -50,7 +50,7 @@ class TemporaryRoomSession(
 
     fun returnToLivingRoomNow() {
         cancelTimer()
-        if (!isSleeping() && getCurrentRoom() != HouseRoom.BEDROOM) {
+        if (!isSleeping() && getCurrentRoom() != HouseRoom.BEDROOM && getCurrentRoom() != HouseRoom.SCHOOL) {
             setCurrentRoom(HouseRoom.LIVING_ROOM)
         }
     }

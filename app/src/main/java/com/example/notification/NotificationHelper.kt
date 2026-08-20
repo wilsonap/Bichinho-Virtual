@@ -95,12 +95,10 @@ object NotificationHelper {
     }
 
     /**
-     * Checks if current time is within Quiet Hours (22:00 to 08:00)
+     * Quiet Hours alinhados ao sono noturno: 22:00 → 07:30.
      */
     fun isQuietHours(): Boolean {
-        val calendar = Calendar.getInstance()
-        val hour = calendar.get(Calendar.HOUR_OF_DAY)
-        return hour >= 22 || hour < 8
+        return PetStatsCalculator.isNightTime()
     }
 
     /**
@@ -132,6 +130,10 @@ object NotificationHelper {
         createNotificationChannels(context)
 
         if (!hasNotificationPermission(context)) {
+            android.util.Log.i(
+                "PET_NOTIFICATION_BLOCKED",
+                "blocked reason=PERMISSION_DENIED type=${type.name}"
+            )
             return
         }
 
@@ -198,8 +200,15 @@ object NotificationHelper {
         val message = customMessage ?: defMessage
 
         // Quiet hours: Override channel to silent, disable sound/vibration
+        // (Worker already blocks night for care checks; this covers TEST / edge calls.)
         val channelToUse = if (quietHours) CHANNEL_SILENT_ID else defaultChannelId
         val effectivePriority = if (quietHours) NotificationCompat.PRIORITY_LOW else priority
+        if (quietHours) {
+            android.util.Log.i(
+                "PET_NOTIFICATION_BLOCKED",
+                "blocked reason=QUIET_HOURS_SILENT_CHANNEL type=${type.name} (still posted silent)"
+            )
+        }
 
         // PendingIntent to launch MainActivity with notification extra
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -232,8 +241,15 @@ object NotificationHelper {
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
-        } catch (_: SecurityException) {
-            // Permission not granted or revoked
+            android.util.Log.i(
+                "PET_NOTIFICATION_SENT",
+                "sent type=${type.name} channel=$channelToUse quietHours=$quietHours name=$effectiveName"
+            )
+        } catch (e: SecurityException) {
+            android.util.Log.i(
+                "PET_NOTIFICATION_BLOCKED",
+                "blocked reason=PERMISSION_DENIED type=${type.name} ex=${e.message}"
+            )
         }
     }
 

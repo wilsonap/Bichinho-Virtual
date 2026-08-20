@@ -248,7 +248,7 @@ fun SettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "• Máximo de 3 notificações de cuidado por dia.\n• Horário Silencioso das 22h às 08h (sem som ou vibração).\n• Sem spam: cada necessidade alerta apenas 1 vez até você cuidar do bichinho.",
+                                        text = "• Máximo de 3 notificações de cuidado por dia.\n• Horário Silencioso das 22h às 07h30 (sem som ou vibração).\n• Sem spam: cada necessidade alerta apenas 1 vez até você cuidar do bichinho.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

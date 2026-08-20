@@ -41,6 +41,12 @@ enum class HouseRoom(
         displayName = "Garagem",
         icon = "🚲",
         description = "Espaço de atividades, oficinas e minijogos"
+    ),
+    SCHOOL(
+        id = "school",
+        displayName = "Escola",
+        icon = "🎒",
+        description = "Sala de aula para Filhote e Jovem"
     );
 
     companion object {

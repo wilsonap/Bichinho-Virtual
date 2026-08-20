@@ -16,7 +16,8 @@ enum class PetBehaviorState(val displayName: String, val defaultIcon: String) {
     TRISTE("Triste", "😢"),
     COM_SAUDADE("Com Saudade", "🥺"),
     PROCURANDO_COMIDA("Procurando comida", "🔍"),
-    BOCEJANDO("Bocejando com sono", "🥱")
+    BOCEJANDO("Bocejando com sono", "🥱"),
+    ESTUDANDO("Estudando na escola", "📚")
 }
 
 data class PetAutonomousState(

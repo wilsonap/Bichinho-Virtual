@@ -20,7 +20,20 @@ data class SimulatedPetState(
     val indigestionStreak: Int = 0,
     val isSleeping: Boolean,
     val wasLonging: Boolean,
-    val elapsedMinutes: Int
+    val elapsedMinutes: Int,
+    /** Estado escolar após a simulação offline. */
+    val isAtSchool: Boolean = false,
+    /**
+     * Se a sessão escolar terminou nesta simulação, contém o schoolEndTimestamp
+     * para conceder recompensa uma única vez.
+     */
+    val completedSchoolEndTimestamp: Long = 0L
+)
+
+/** Resultado do agendamento inteligente (delay + motivo para logs). */
+data class ScheduleEstimate(
+    val delayMinutes: Long,
+    val reason: String
 )
 
 object PetStatsCalculator {
@@ -31,13 +44,29 @@ object PetStatsCalculator {
     const val HEALTH_THRESHOLD = PetHealthRules.HEALTH_DOENTE_MIN
     const val LONGING_THRESHOLD_MINUTES = 45
 
+    /** Clamp padrão para cuidados comuns (fome/higiene/energia/saudade). */
+    const val MIN_CARE_DELAY_MINUTES = 15L
+
     /**
-     * Determines whether a given timestamp is within the protected nighttime window (22:00 to 08:00).
+     * Atraso mínimo para saúde urgente (Doente/Crítico/doença ativa) ainda pendente de alerta.
+     * Compatível com WorkManager — sem polling contínuo após o alerta único.
+     */
+    const val MIN_CRITICAL_HEALTH_DELAY_MINUTES = 5L
+
+    // Health damage while awake daytime: -1 every 10 minutes when hunger or hygiene <= 20
+    private const val HEALTH_DAMAGE_INTERVAL_MIN = 10L
+    private const val HUNGER_DECAY_INTERVAL_AWAKE = 5L
+    private const val HYGIENE_DECAY_INTERVAL_AWAKE = 8L
+
+    /**
+     * Janela noturna protegida: 22:00 → 07:30.
+     * Às 07:30 o sono noturno termina (mesmo com energia < 100%).
      */
     fun isNightTime(timestamp: Long = System.currentTimeMillis()): Boolean {
         val cal = Calendar.getInstance().apply { timeInMillis = timestamp }
         val hour = cal.get(Calendar.HOUR_OF_DAY)
-        return hour >= 22 || hour < 8
+        val minute = cal.get(Calendar.MINUTE)
+        return hour >= 22 || hour < 7 || (hour == 7 && minute < 30)
     }
 
     /**
@@ -61,30 +90,30 @@ object PetStatsCalculator {
     }
 
     /**
-     * Returns the timestamp when the next daytime period starts (at 08:00).
+     * Início do dia (fim do sono noturno): 07:30.
      */
     fun getNextDayStartTimestamp(fromTimestamp: Long = System.currentTimeMillis()): Long {
         val cal = Calendar.getInstance().apply {
             timeInMillis = fromTimestamp
-            set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val currentHour = cal.get(Calendar.HOUR_OF_DAY)
-        if (currentHour >= 8) {
+        val hour = cal.get(Calendar.HOUR_OF_DAY)
+        val minute = cal.get(Calendar.MINUTE)
+        if (hour > 7 || (hour == 7 && minute >= 30)) {
             cal.add(Calendar.DAY_OF_YEAR, 1)
-            cal.set(Calendar.HOUR_OF_DAY, 8)
-        } else {
-            cal.set(Calendar.HOUR_OF_DAY, 8)
         }
+        cal.set(Calendar.HOUR_OF_DAY, 7)
+        cal.set(Calendar.MINUTE, 30)
         return cal.timeInMillis
     }
 
     /**
      * Single source of truth for simulating offline pet stats over time.
      * Accurately splits time intervals between:
-     * 1. Daytime (08:00 - 22:00): Active decay, disease risk exposure, and daytime exhaustion sleep.
-     * 2. Nighttime (22:00 - 08:00): Protected night sleep (stays sleeping even at 100%, no health/hygiene/happiness penalties, no disease contraction).
+     * 1. Daytime (07:30 - 22:00): Active decay, disease risk exposure, and daytime exhaustion sleep.
+     * 2. Nighttime (22:00 - 07:30): Protected night sleep (stays sleeping even at 100%, no health/hygiene/happiness penalties, no disease contraction).
+     * 3. School session: attributes frozen until schoolEndTimestamp.
      */
     fun calculateSimulatedStats(pet: PetEntity, targetTimestamp: Long = System.currentTimeMillis()): SimulatedPetState {
         if (!pet.isHatched) {
@@ -100,7 +129,8 @@ object PetStatsCalculator {
                 indigestionStreak = pet.indigestionStreak,
                 isSleeping = pet.isSleeping,
                 wasLonging = false,
-                elapsedMinutes = 0
+                elapsedMinutes = 0,
+                isAtSchool = pet.isAtSchool
             )
         }
 
@@ -109,6 +139,9 @@ object PetStatsCalculator {
 
         if (elapsedMinutes <= 0) {
             val currentlyNight = isNightTime(targetTimestamp)
+            val stillAtSchool = pet.isAtSchool &&
+                pet.schoolEndTimestamp > 0L &&
+                targetTimestamp < pet.schoolEndTimestamp
             return SimulatedPetState(
                 hunger = pet.hunger,
                 energy = pet.energy,
@@ -119,9 +152,10 @@ object PetStatsCalculator {
                 lowHygieneExposure = pet.lowHygieneExposure,
                 exhaustionCount = pet.exhaustionCount,
                 indigestionStreak = pet.indigestionStreak,
-                isSleeping = if (currentlyNight) true else pet.isSleeping,
+                isSleeping = if (stillAtSchool) false else if (currentlyNight) true else pet.isSleeping,
                 wasLonging = false,
-                elapsedMinutes = 0
+                elapsedMinutes = 0,
+                isAtSchool = stillAtSchool
             )
         }
 
@@ -140,16 +174,37 @@ object PetStatsCalculator {
         var isSleeping = pet.isSleeping
         var consecutiveDaytimeAwakeMinutes = 0
         var wasLonging = false
+        var isAtSchool = pet.isAtSchool
+        var completedSchoolEndTimestamp = 0L
+        val schoolEnd = pet.schoolEndTimestamp
 
         var currentTs = pet.lastUpdateTimestamp
         var wasNightInPreviousMinute = isNightTime(pet.lastUpdateTimestamp)
 
         for (m in 1..simMinutes) {
             currentTs += 60_000L
+
+            // --- SCHOOL FREEZE: sem decay / doença / notificações de need ---
+            if (isAtSchool && schoolEnd > 0L) {
+                if (currentTs < schoolEnd) {
+                    isSleeping = false
+                    consecutiveDaytimeAwakeMinutes = 0
+                    wasNightInPreviousMinute = isNightTime(currentTs)
+                    continue
+                }
+                // Primeiro minuto >= fim da aula
+                isAtSchool = false
+                isSleeping = false
+                if (pet.lastSchoolRewardEndTimestamp != schoolEnd) {
+                    completedSchoolEndTimestamp = schoolEnd
+                }
+                // segue para lógica diurna/noturna neste mesmo minuto
+            }
+
             val isNight = isNightTime(currentTs)
 
             if (isNight) {
-                // --- NIGHTTIME (22:00 to 08:00): Protected Rest Period ---
+                // --- NIGHTTIME (22:00 to 07:30): Protected Rest Period ---
                 isSleeping = true // Forced night rest
                 consecutiveDaytimeAwakeMinutes = 0 // Reset daytime longing
 
@@ -167,10 +222,10 @@ object PetStatsCalculator {
                 // Health & Disease: Protected! Zero damage and zero new diseases during night!
                 wasNightInPreviousMinute = true
             } else {
-                // --- DAYTIME (08:00 to 22:00): Active / Nap Period ---
-                // If transitioning from Night to Day at 08:00:
+                // --- DAYTIME (07:30 to 22:00): Active / Nap Period ---
+                // If transitioning from Night to Day at 07:30:
                 if (wasNightInPreviousMinute) {
-                    // Night rest ends automatically at 08:00
+                    // Night rest ends automatically at 07:30
                     isSleeping = false
                     wasNightInPreviousMinute = false
                     continue
@@ -238,6 +293,14 @@ object PetStatsCalculator {
             }
         }
 
+        // Se ainda estava na escola no target e o fim já passou sem processar no loop (edge)
+        if (isAtSchool && schoolEnd > 0L && targetTimestamp >= schoolEnd) {
+            isAtSchool = false
+            if (pet.lastSchoolRewardEndTimestamp != schoolEnd && completedSchoolEndTimestamp == 0L) {
+                completedSchoolEndTimestamp = schoolEnd
+            }
+        }
+
         return SimulatedPetState(
             hunger = hunger.toInt().coerceIn(0, 100),
             energy = energy.toInt().coerceIn(0, 100),
@@ -250,81 +313,196 @@ object PetStatsCalculator {
             indigestionStreak = indigestionStreak,
             isSleeping = isSleeping,
             wasLonging = wasLonging,
-            elapsedMinutes = elapsedMinutes
+            elapsedMinutes = elapsedMinutes,
+            isAtSchool = isAtSchool,
+            completedSchoolEndTimestamp = completedSchoolEndTimestamp
         )
     }
 
     /**
-     * Calculates the estimated delay in minutes until the next critical notification threshold is reached.
-     * Between 22:00 and 08:00, all care notifications are paused and the check is delayed until 08:00.
+     * Calculates the estimated delay in minutes until the next critical notification threshold.
+     * Between 22:00 and 07:30, checks are delayed until 07:30 (no normal alerts at night).
+     * During school, checks are delayed until schoolEndTimestamp.
+     *
+     * @param allowCriticalHealthShortcut quando true e o pet já está doente/crítico/com doença
+     *        e o alerta de saúde ainda não foi enviado, usa delay curto (5 min) em vez de 15.
      */
-    fun estimateMinutesUntilNextThreshold(pet: PetEntity, fromTimestamp: Long = System.currentTimeMillis()): Long {
-        if (!pet.isHatched) return 60L
+    fun estimateMinutesUntilNextThreshold(
+        pet: PetEntity,
+        fromTimestamp: Long = System.currentTimeMillis(),
+        allowCriticalHealthShortcut: Boolean = false
+    ): ScheduleEstimate {
+        if (!pet.isHatched) {
+            return ScheduleEstimate(60L, "EGG_OR_UNHATCHED")
+        }
 
         val isCurrentlyNight = isNightTime(fromTimestamp)
         if (isCurrentlyNight) {
-            // Between 22:00 and 08:00, no care notifications!
-            val msUntil0800 = getNextDayStartTimestamp(fromTimestamp) - fromTimestamp
-            val minutesUntil0800 = max(15L, (msUntil0800 / (1000 * 60)))
-            return minutesUntil0800
+            val msUntilDayStart = getNextDayStartTimestamp(fromTimestamp) - fromTimestamp
+            val minutesUntilDayStart = max(MIN_CARE_DELAY_MINUTES, (msUntilDayStart / (1000 * 60)))
+            return ScheduleEstimate(minutesUntilDayStart, "QUIET_UNTIL_0730")
         }
 
-        // In daytime: find minutes until 22:00
+        // Escola: suspende alertas de cuidado até o fim do turno
+        if (pet.isAtSchool && pet.schoolEndTimestamp > fromTimestamp) {
+            val msUntilSchoolEnd = pet.schoolEndTimestamp - fromTimestamp
+            val minutesUntilSchoolEnd = max(1L, msUntilSchoolEnd / (1000 * 60))
+            return ScheduleEstimate(minutesUntilSchoolEnd, "SCHOOL_UNTIL_END")
+        }
+
         val msUntil2200 = getNextNightStartTimestamp(fromTimestamp) - fromTimestamp
-        val minutesUntil2200 = max(15L, (msUntil2200 / (1000 * 60)))
+        val minutesUntil2200 = max(MIN_CARE_DELAY_MINUTES, (msUntil2200 / (1000 * 60)))
 
         val simulated = calculateSimulatedStats(pet, fromTimestamp)
-        val candidateDelays = mutableListOf<Long>()
+        val candidates = mutableListOf<Pair<Long, String>>()
 
-        // 0. Daytime sleep awakening threshold (if sleeping, schedule check when energy reaches 100%)
+        val disease = PetDisease.fromString(simulated.disease)
+        val healthState = PetHealthState.fromHealth(simulated.health)
+        val isHealthUrgent =
+            healthState == PetHealthState.DOENTE ||
+                healthState == PetHealthState.CRITICO ||
+                disease != PetDisease.NONE
+
+        if (allowCriticalHealthShortcut && isHealthUrgent) {
+            candidates.add(MIN_CRITICAL_HEALTH_DELAY_MINUTES to "HEALTH_URGENT")
+        }
+
+        // 0. Daytime sleep awakening
         if (simulated.isSleeping && simulated.energy < 100) {
             val minutesUntilFull = (100 - simulated.energy) * 2L
             if (minutesUntilFull in 1 until minutesUntil2200) {
-                candidateDelays.add(minutesUntilFull)
+                candidates.add(minutesUntilFull to "SLEEP_WAKE")
             }
         }
 
-        // 1. Hunger threshold (<= 20)
+        // 1. Hunger (<= 20)
         if (simulated.hunger > HUNGER_THRESHOLD) {
             val pointsToLose = simulated.hunger - HUNGER_THRESHOLD
-            val minutesNeeded = if (simulated.isSleeping) pointsToLose * 10L else pointsToLose * 5L
+            val minutesNeeded = if (simulated.isSleeping) pointsToLose * 10L else pointsToLose * HUNGER_DECAY_INTERVAL_AWAKE
             if (minutesNeeded < minutesUntil2200) {
-                candidateDelays.add(minutesNeeded)
+                candidates.add(minutesNeeded to "HUNGER")
+            }
+        } else {
+            candidates.add(0L to "HUNGER_NOW")
+        }
+
+        // 2. Hygiene (<= 20)
+        if (!simulated.isSleeping) {
+            if (simulated.hygiene > HYGIENE_THRESHOLD) {
+                val pointsToLose = simulated.hygiene - HYGIENE_THRESHOLD
+                val minutesNeeded = pointsToLose * HYGIENE_DECAY_INTERVAL_AWAKE
+                if (minutesNeeded < minutesUntil2200) {
+                    candidates.add(minutesNeeded to "HYGIENE")
+                }
+            } else {
+                candidates.add(0L to "HYGIENE_NOW")
             }
         }
 
-        // 2. Hygiene threshold (<= 20)
-        if (!simulated.isSleeping && simulated.hygiene > HYGIENE_THRESHOLD) {
-            val pointsToLose = simulated.hygiene - HYGIENE_THRESHOLD
-            val minutesNeeded = pointsToLose * 8L
-            if (minutesNeeded < minutesUntil2200) {
-                candidateDelays.add(minutesNeeded)
+        // 3. Energy (<= 15)
+        if (!simulated.isSleeping) {
+            if (simulated.energy > ENERGY_THRESHOLD) {
+                val pointsToLose = simulated.energy - ENERGY_THRESHOLD
+                val minutesNeeded = pointsToLose * 6L
+                if (minutesNeeded < minutesUntil2200) {
+                    candidates.add(minutesNeeded to "ENERGY")
+                }
+            } else {
+                candidates.add(0L to "ENERGY_NOW")
             }
         }
 
-        // 3. Energy threshold (<= 15)
-        if (!simulated.isSleeping && simulated.energy > ENERGY_THRESHOLD) {
-            val pointsToLose = simulated.energy - ENERGY_THRESHOLD
-            val minutesNeeded = pointsToLose * 6L
-            if (minutesNeeded < minutesUntil2200) {
-                candidateDelays.add(minutesNeeded)
-            }
-        }
-
-        // 4. Longing threshold (45 minutes from last interaction)
+        // 4. Longing (45 min)
         val elapsedMinutes = ((fromTimestamp - pet.lastUpdateTimestamp) / (1000 * 60))
         if (elapsedMinutes < LONGING_THRESHOLD_MINUTES) {
             val minutesUntilLonging = LONGING_THRESHOLD_MINUTES - elapsedMinutes
             if (minutesUntilLonging < minutesUntil2200) {
-                candidateDelays.add(minutesUntilLonging)
+                candidates.add(minutesUntilLonging to "LONGING")
+            }
+        } else if (simulated.wasLonging) {
+            candidates.add(0L to "LONGING_NOW")
+        }
+
+        // 5. Health state transitions (INDISPOSTO / DOENTE / CRITICO)
+        addHealthScheduleCandidates(
+            simulated = simulated,
+            minutesUntil2200 = minutesUntil2200,
+            candidates = candidates
+        )
+
+        // 6. Night start
+        candidates.add(minutesUntil2200 to "NIGHT_START")
+
+        val best = candidates.minByOrNull { it.first } ?: (minutesUntil2200 to "NIGHT_START")
+        val isCriticalReason = best.second.startsWith("HEALTH") &&
+            (best.second == "HEALTH_URGENT" ||
+                best.second == "HEALTH_DOENTE" ||
+                best.second == "HEALTH_CRITICO" ||
+                best.second == "HEALTH_DISEASE")
+
+        val minClamp = if (isCriticalReason && allowCriticalHealthShortcut) {
+            MIN_CRITICAL_HEALTH_DELAY_MINUTES
+        } else if (best.second == "HEALTH_URGENT") {
+            MIN_CRITICAL_HEALTH_DELAY_MINUTES
+        } else {
+            MIN_CARE_DELAY_MINUTES
+        }
+
+        // 0 = necessidade já atingida → verificar no mínimo clamp (não delay 0 infinito)
+        val rawDelay = best.first.coerceAtLeast(0L)
+        val delay = max(minClamp, if (rawDelay == 0L) minClamp else rawDelay)
+        return ScheduleEstimate(delay, best.second)
+    }
+
+    /**
+     * Estima minutos até a saúde cruzar limiares de comunicação, considerando
+     * dano de -1/10 min quando fome ou higiene ≤ 20 (acordado de dia).
+     */
+    private fun addHealthScheduleCandidates(
+        simulated: SimulatedPetState,
+        minutesUntil2200: Long,
+        candidates: MutableList<Pair<Long, String>>
+    ) {
+        val disease = PetDisease.fromString(simulated.disease)
+        if (disease != PetDisease.NONE) {
+            candidates.add(0L to "HEALTH_DISEASE")
+        }
+
+        val health = simulated.health
+        val state = PetHealthState.fromHealth(health)
+        when (state) {
+            PetHealthState.DOENTE -> candidates.add(0L to "HEALTH_DOENTE")
+            PetHealthState.CRITICO -> candidates.add(0L to "HEALTH_CRITICO")
+            PetHealthState.INDISPOSTO -> candidates.add(0L to "HEALTH_INDISPOSTO")
+            PetHealthState.SAUDAVEL -> { /* projeta abaixo */ }
+        }
+
+        if (simulated.isSleeping) return // dano à saúde só no ramo acordado diurno
+
+        val minutesUntilDamage = minutesUntilHealthDamageStarts(simulated.hunger, simulated.hygiene)
+        if (minutesUntilDamage >= minutesUntil2200) return
+
+        fun addBoundary(targetHealthInclusive: Int, reason: String) {
+            if (health <= targetHealthInclusive) return
+            val pointsToLose = health - targetHealthInclusive
+            val minutesDrop = pointsToLose * HEALTH_DAMAGE_INTERVAL_MIN
+            val total = minutesUntilDamage + minutesDrop
+            if (total in 1 until minutesUntil2200) {
+                candidates.add(total to reason)
             }
         }
 
-        // 5. Night start threshold at 22:00
-        candidateDelays.add(minutesUntil2200)
+        // fromHealth: >=61 SAUDAVEL → INDISPOSTO em <=60; DOENTE <=40; CRITICO <=20
+        addBoundary(60, "HEALTH_INDISPOSTO")
+        addBoundary(PetHealthRules.HEALTH_DOENTE_MAX, "HEALTH_DOENTE")
+        addBoundary(PetHealthRules.HEALTH_CRITICO_MAX, "HEALTH_CRITICO")
+    }
 
-        // Return the earliest critical threshold clamped to a safe minimum of 15 minutes
-        val shortestDelay = candidateDelays.minOrNull() ?: minutesUntil2200
-        return max(15L, shortestDelay)
+    /** Minutos até fome ou higiene atingir ≤ 20 (acordado). 0 se já danificando. */
+    fun minutesUntilHealthDamageStarts(hunger: Int, hygiene: Int): Long {
+        if (hunger <= HUNGER_THRESHOLD || hygiene <= HYGIENE_THRESHOLD) return 0L
+        val hungerMins = (hunger - HUNGER_THRESHOLD) * HUNGER_DECAY_INTERVAL_AWAKE
+        val hygieneMins = (hygiene - HYGIENE_THRESHOLD) * HYGIENE_DECAY_INTERVAL_AWAKE
+        return min(hungerMins, hygieneMins)
     }
 }

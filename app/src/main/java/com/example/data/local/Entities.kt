@@ -38,6 +38,12 @@ data class PetEntity(
     val exhaustionCount: Int = 0,
     val indigestionStreak: Int = 0,
     val lastDoctorCheckupTimestamp: Long = 0L,
+    /** true enquanto o pet está na escola (atributos congelados). */
+    val isAtSchool: Boolean = false,
+    /** Timestamp absoluto do fim do turno escolar atual. */
+    val schoolEndTimestamp: Long = 0L,
+    /** schoolEndTimestamp da última sessão já recompensada (evita XP duplicado). */
+    val lastSchoolRewardEndTimestamp: Long = 0L,
     val lastUpdateTimestamp: Long = System.currentTimeMillis()
 )
 

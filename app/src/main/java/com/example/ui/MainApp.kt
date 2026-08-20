@@ -229,6 +229,7 @@ fun MainApp(
                         onToggleSleep = { viewModel.toggleSleep() },
                         onPlay = { item -> viewModel.playWithToy(item) },
                         onDoctor = { payWithCoins -> viewModel.doctorCheckup(payWithCoins) },
+                        onSchool = { viewModel.sendToSchool() },
                         onOpenMinigames = {
                             pendingLivingRoomAfterMinigames = true
                             navController.navigate(Screen.Minigames.route)

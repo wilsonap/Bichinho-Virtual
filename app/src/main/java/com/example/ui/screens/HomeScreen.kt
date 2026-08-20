@@ -61,6 +61,7 @@ fun HomeScreen(
     onToggleSleep: () -> Unit,
     onPlay: (ShopItem?) -> Unit,
     onDoctor: (Boolean) -> Unit,
+    onSchool: () -> Unit = {},
     onOpenMinigames: () -> Unit,
     onOpenShop: () -> Unit,
     onOpenInventory: () -> Unit,
@@ -74,10 +75,16 @@ fun HomeScreen(
     var showDoctorDialog by remember { mutableStateOf(false) }
     var activeNotificationAlert by remember(notificationHighlight) { mutableStateOf(notificationHighlight) }
 
-    // House Room state (Living Room as default, Bedroom during night/sleep)
+    // House Room state (Living Room as default, Bedroom during night/sleep, School while studying)
     val isNightTime = PetStatsCalculator.isNightTime()
-    var currentRoom by remember(pet.isSleeping, isNightTime) {
-        mutableStateOf(if (pet.isSleeping || isNightTime) HouseRoom.BEDROOM else HouseRoom.LIVING_ROOM)
+    var currentRoom by remember(pet.isSleeping, isNightTime, pet.isAtSchool) {
+        mutableStateOf(
+            when {
+                pet.isAtSchool -> HouseRoom.SCHOOL
+                pet.isSleeping || isNightTime -> HouseRoom.BEDROOM
+                else -> HouseRoom.LIVING_ROOM
+            }
+        )
     }
 
     val temporaryRooms = remember(coroutineScope) { TemporaryRoomSession(coroutineScope) }
@@ -89,6 +96,15 @@ fun HomeScreen(
         onDispose { temporaryRooms.cancelTimer() }
     }
 
+    LaunchedEffect(pet.isAtSchool) {
+        if (pet.isAtSchool) {
+            temporaryRooms.cancelTimer()
+            currentRoom = HouseRoom.SCHOOL
+        } else if (currentRoom == HouseRoom.SCHOOL) {
+            currentRoom = HouseRoom.LIVING_ROOM
+        }
+    }
+
     LaunchedEffect(forceReturnToLivingRoom) {
         if (forceReturnToLivingRoom) {
             temporaryRooms.returnToLivingRoomNow()
@@ -97,6 +113,7 @@ fun HomeScreen(
     }
 
     LaunchedEffect(pet.isSleeping) {
+        if (pet.isAtSchool) return@LaunchedEffect
         if (pet.isSleeping) {
             temporaryRooms.cancelTimer()
             currentRoom = HouseRoom.BEDROOM
@@ -234,6 +251,18 @@ fun HomeScreen(
                             .padding(bottom = 6.dp)
                     )
 
+                    if (pet.isAtSchool) {
+                        Text(
+                            text = PetSchoolRules.formatSchoolUntilLabel(pet.schoolEndTimestamp),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0369A1),
+                            modifier = Modifier
+                                .padding(bottom = 4.dp)
+                                .testTag("school_status_label")
+                        )
+                    }
+
                     PetLivingStage(
                         pet = pet,
                         currentRoom = currentRoom,
@@ -254,6 +283,7 @@ fun HomeScreen(
                         onToggleSleep = toggleSleepRoom,
                         onPlay = openBackyardForPlay,
                         onDoctorClick = { showDoctorDialog = true },
+                        onSchoolClick = onSchool,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -298,6 +328,20 @@ fun HomeScreen(
                         .padding(top = 6.dp, bottom = 4.dp)
                 )
 
+                if (pet.isAtSchool) {
+                    Text(
+                        text = PetSchoolRules.formatSchoolUntilLabel(pet.schoolEndTimestamp),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0369A1),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp)
+                            .testTag("school_status_label")
+                    )
+                }
+
                 PetLivingStage(
                     pet = pet,
                     currentRoom = currentRoom,
@@ -327,6 +371,7 @@ fun HomeScreen(
                     onToggleSleep = toggleSleepRoom,
                     onPlay = openBackyardForPlay,
                     onDoctorClick = { showDoctorDialog = true },
+                    onSchoolClick = onSchool,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -406,11 +451,12 @@ private fun HouseRoomSelectorBar(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
     ) {
-        items(HouseRoom.entries) { room ->
+        items(HouseRoom.entries.filter { it != HouseRoom.SCHOOL || currentRoom == HouseRoom.SCHOOL }) { room ->
             val isSelected = currentRoom == room
             FilterChip(
                 selected = isSelected,
                 onClick = {
+                    if (room == HouseRoom.SCHOOL) return@FilterChip
                     if (!isSleeping || room == HouseRoom.BEDROOM) {
                         onSelectRoom(room)
                     }
@@ -1031,8 +1077,20 @@ private fun CareActionsDock(
     onToggleSleep: () -> Unit,
     onPlay: () -> Unit,
     onDoctorClick: () -> Unit,
+    onSchoolClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val stage = try {
+        PetStage.valueOf(pet.stage)
+    } catch (_: Exception) {
+        PetStage.FILHOTE
+    }
+    val schoolEligible = stage == PetStage.FILHOTE || stage == PetStage.JOVEM
+    val schoolLabel = when {
+        pet.isAtSchool -> "Na escola"
+        else -> "Escola"
+    }
+
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = if (pet.isSleeping) Color(0xFF1E293B) else MaterialTheme.colorScheme.surfaceVariant,
@@ -1042,7 +1100,7 @@ private fun CareActionsDock(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = if (isCompact) 6.dp else 10.dp),
+                .padding(horizontal = 4.dp, vertical = if (isCompact) 6.dp else 10.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1050,7 +1108,7 @@ private fun CareActionsDock(
                 icon = Icons.Rounded.Restaurant,
                 label = "Alimentar",
                 color = Color(0xFFF97316),
-                enabled = !pet.isSleeping,
+                enabled = !pet.isSleeping && !pet.isAtSchool,
                 isCompact = isCompact,
                 onClick = onFeedClick,
                 testTag = "action_feed"
@@ -1060,7 +1118,7 @@ private fun CareActionsDock(
                 icon = Icons.Rounded.Bathtub,
                 label = "Banho",
                 color = Color(0xFF06B6D4),
-                enabled = !pet.isSleeping,
+                enabled = !pet.isSleeping && !pet.isAtSchool,
                 isCompact = isCompact,
                 onClick = onBathe,
                 testTag = "action_bath"
@@ -1069,9 +1127,9 @@ private fun CareActionsDock(
             val isNight = com.example.notification.PetStatsCalculator.isNightTime()
             CareActionButton(
                 icon = if (pet.isSleeping) (if (isNight) Icons.Rounded.NightsStay else Icons.Rounded.Lightbulb) else Icons.Rounded.NightsStay,
-                label = if (isNight && pet.isSleeping) "Sono (22h-8h)" else if (pet.isSleeping) "Acordar" else "Dormir",
+                label = if (isNight && pet.isSleeping) "Sono (22-7h30)" else if (pet.isSleeping) "Acordar" else "Dormir",
                 color = Color(0xFF8B5CF6),
-                enabled = !isNight,
+                enabled = !isNight && !pet.isAtSchool,
                 isCompact = isCompact,
                 onClick = onToggleSleep,
                 testTag = "action_sleep"
@@ -1081,7 +1139,7 @@ private fun CareActionsDock(
                 icon = Icons.Rounded.SportsEsports,
                 label = "Brincar",
                 color = Color(0xFFEC4899),
-                enabled = !pet.isSleeping,
+                enabled = !pet.isSleeping && !pet.isAtSchool,
                 isCompact = isCompact,
                 onClick = onPlay,
                 testTag = "action_play"
@@ -1091,11 +1149,23 @@ private fun CareActionsDock(
                 icon = Icons.Rounded.LocalHospital,
                 label = "Médico",
                 color = Color(0xFFEF4444),
-                enabled = !pet.isSleeping,
+                enabled = !pet.isSleeping && !pet.isAtSchool,
                 isCompact = isCompact,
                 onClick = onDoctorClick,
                 testTag = "action_doctor"
             )
+
+            if (schoolEligible || pet.isAtSchool) {
+                CareActionButton(
+                    icon = Icons.Rounded.School,
+                    label = schoolLabel,
+                    color = Color(0xFF0EA5E9),
+                    enabled = !pet.isSleeping && !isNight,
+                    isCompact = isCompact,
+                    onClick = onSchoolClick,
+                    testTag = "action_school"
+                )
+            }
         }
     }
 }

@@ -1,9 +1,12 @@
 package com.example.notification
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.data.local.AppDatabase
+import com.example.data.model.PetDisease
+import com.example.data.model.PetHealthState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -13,128 +16,168 @@ class PetCareWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val tag = "PET_NOTIFICATION_WORKER"
         try {
+            Log.i(tag, "worker started")
+
             val db = AppDatabase.getDatabase(applicationContext)
-            val pet = db.petDao().getPet() ?: return@withContext Result.success()
+            val pet = db.petDao().getPet() ?: run {
+                Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=NO_PET")
+                return@withContext Result.success()
+            }
 
             if (!pet.isHatched) {
+                Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=NOT_HATCHED petId=${pet.id}")
                 return@withContext Result.success()
             }
 
             val prefs = NotificationPreferences(applicationContext)
             if (!prefs.isNotificationsEnabled) {
+                Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=MASTER_OFF petId=${pet.id}")
                 return@withContext Result.success()
             }
 
-            // Check if currently within protected night hours (22:00 to 08:00)
             if (PetStatsCalculator.isNightTime()) {
-                // Do NOT send care notifications during the night!
+                Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=QUIET_HOURS petId=${pet.id}")
                 PetCareScheduler.scheduleNextCheck(applicationContext)
                 return@withContext Result.success()
             }
 
-            // Single source of truth calculation
-            val simulated = PetStatsCalculator.calculateSimulatedStats(pet, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            if (pet.isAtSchool && pet.schoolEndTimestamp > now) {
+                Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=AT_SCHOOL petId=${pet.id}")
+                PetCareScheduler.scheduleNextCheck(applicationContext)
+                return@withContext Result.success()
+            }
 
-            // 1. Health Alert (Highest priority)
-            val healthState = com.example.data.model.PetHealthState.fromHealth(simulated.health)
-            val petDisease = com.example.data.model.PetDisease.fromString(simulated.disease)
+            val simulated = PetStatsCalculator.calculateSimulatedStats(pet, System.currentTimeMillis())
+            val healthState = PetHealthState.fromHealth(simulated.health)
+            val petDisease = PetDisease.fromString(simulated.disease)
             val effectivePetName = pet.name.ifBlank { "Seu bichinho" }
 
-            if (healthState != com.example.data.model.PetHealthState.SAUDAVEL || petDisease != com.example.data.model.PetDisease.NONE) {
-                if (prefs.isHealthEnabled && !prefs.hasNotifiedHealth) {
-                    val (healthTitle, healthMsg) = when {
-                        healthState == com.example.data.model.PetHealthState.CRITICO -> Pair(
-                            "Saúde Crítica! 🚨",
-                            "🚨 A saúde de $effectivePetName está crítica! Dê remédios ou leve ao médico imediatamente."
+            Log.i(
+                tag,
+                "eval petId=${pet.id} hunger=${simulated.hunger} hygiene=${simulated.hygiene} " +
+                    "energy=${simulated.energy} health=${simulated.health} disease=${simulated.disease} " +
+                    "sleeping=${simulated.isSleeping}"
+            )
+
+            // 1. Health — fora do cap diário de cuidados comuns; single-alert via hasNotifiedHealth
+            if (healthState != PetHealthState.SAUDAVEL || petDisease != PetDisease.NONE) {
+                when {
+                    !prefs.isHealthEnabled ->
+                        Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=HEALTH_DISABLED type=HEALTH")
+                    prefs.hasNotifiedHealth ->
+                        Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=ALREADY_NOTIFIED type=HEALTH")
+                    else -> {
+                        val (healthTitle, healthMsg) = when {
+                            healthState == PetHealthState.CRITICO -> Pair(
+                                "Saúde Crítica! 🚨",
+                                "🚨 A saúde de $effectivePetName está crítica! Dê remédios ou leve ao médico imediatamente."
+                            )
+                            petDisease != PetDisease.NONE -> Pair(
+                                "🤒 $effectivePetName não está bem",
+                                "🤒 $effectivePetName não está se sentindo bem. Abra o jogo para cuidar dele."
+                            )
+                            healthState == PetHealthState.DOENTE -> Pair(
+                                "🤒 $effectivePetName não está bem",
+                                "🤒 $effectivePetName não está se sentindo bem. Abra o jogo para cuidar dele."
+                            )
+                            else -> Pair(
+                                "Bichinho Indisposto 💛",
+                                "💛 $effectivePetName não está se sentindo muito bem."
+                            )
+                        }
+                        NotificationHelper.sendPetNotification(
+                            applicationContext,
+                            PetNotificationType.HEALTH,
+                            pet.name,
+                            customTitle = healthTitle,
+                            customMessage = healthMsg
                         )
-                        petDisease != com.example.data.model.PetDisease.NONE -> Pair(
-                            "🤒 $effectivePetName não está bem",
-                            "🤒 $effectivePetName não está se sentindo bem. Abra o jogo para cuidar dele."
-                        )
-                        healthState == com.example.data.model.PetHealthState.DOENTE -> Pair(
-                            "🤒 $effectivePetName não está bem",
-                            "🤒 $effectivePetName não está se sentindo bem. Abra o jogo para cuidar dele."
-                        )
-                        else -> Pair(
-                            "Bichinho Indisposto 💛",
-                            "💛 $effectivePetName não está se sentindo muito bem."
-                        )
+                        prefs.hasNotifiedHealth = true
+                        // Não incrementa MAX_DAILY_CARE — saúde crítica é canal separado
                     }
-                    NotificationHelper.sendPetNotification(
-                        applicationContext,
-                        PetNotificationType.HEALTH,
-                        pet.name,
-                        customTitle = healthTitle,
-                        customMessage = healthMsg
-                    )
-                    prefs.hasNotifiedHealth = true
-                    prefs.incrementDailyNotificationCount()
                 }
             }
 
-            // 2. Hunger Alert (Respects daily limit & anti-spam)
+            // 2–5. Cuidados comuns (fome/higiene/energia/saudade) — respeitam cap diário = 3
             if (simulated.hunger <= PetStatsCalculator.HUNGER_THRESHOLD) {
-                if (prefs.isHungerEnabled && !prefs.hasNotifiedHunger && prefs.canSendCareNotificationToday()) {
-                    NotificationHelper.sendPetNotification(
-                        applicationContext,
-                        PetNotificationType.HUNGER,
-                        pet.name
-                    )
-                    prefs.hasNotifiedHunger = true
-                    prefs.incrementDailyNotificationCount()
-                }
+                trySendCare(
+                    prefs = prefs,
+                    enabled = prefs.isHungerEnabled,
+                    alreadyNotified = prefs.hasNotifiedHunger,
+                    type = PetNotificationType.HUNGER,
+                    petName = pet.name
+                ) { prefs.hasNotifiedHunger = true }
             }
 
-            // 3. Hygiene Alert (Respects daily limit & anti-spam)
             if (simulated.hygiene <= PetStatsCalculator.HYGIENE_THRESHOLD) {
-                if (prefs.isHygieneEnabled && !prefs.hasNotifiedHygiene && prefs.canSendCareNotificationToday()) {
-                    NotificationHelper.sendPetNotification(
-                        applicationContext,
-                        PetNotificationType.HYGIENE,
-                        pet.name
-                    )
-                    prefs.hasNotifiedHygiene = true
-                    prefs.incrementDailyNotificationCount()
-                }
+                trySendCare(
+                    prefs = prefs,
+                    enabled = prefs.isHygieneEnabled,
+                    alreadyNotified = prefs.hasNotifiedHygiene,
+                    type = PetNotificationType.HYGIENE,
+                    petName = pet.name
+                ) { prefs.hasNotifiedHygiene = true }
             }
 
-            // 4. Energy Alert (Only when awake; if already sleeping, no repeated alarm)
             if (simulated.energy <= PetStatsCalculator.ENERGY_THRESHOLD && !simulated.isSleeping) {
-                if (prefs.isEnergyEnabled && !prefs.hasNotifiedEnergy && prefs.canSendCareNotificationToday()) {
-                    NotificationHelper.sendPetNotification(
-                        applicationContext,
-                        PetNotificationType.ENERGY,
-                        pet.name
-                    )
-                    prefs.hasNotifiedEnergy = true
-                    prefs.incrementDailyNotificationCount()
-                }
+                trySendCare(
+                    prefs = prefs,
+                    enabled = prefs.isEnergyEnabled,
+                    alreadyNotified = prefs.hasNotifiedEnergy,
+                    type = PetNotificationType.ENERGY,
+                    petName = pet.name
+                ) { prefs.hasNotifiedEnergy = true }
             }
 
-            // 5. Longing Alert (Triggered when player is away for a long time)
             if (simulated.wasLonging) {
-                val now = System.currentTimeMillis()
-                val lastLonging = prefs.lastLongingNotificationTimestamp
-                val elapsedSinceLastLonging = now - lastLonging
-                // Send at most once every 6 hours of continuous absence
-                if (prefs.isLongingEnabled && elapsedSinceLastLonging >= 6 * 60 * 60 * 1000L && prefs.canSendCareNotificationToday()) {
-                    NotificationHelper.sendPetNotification(
-                        applicationContext,
-                        PetNotificationType.LONGING,
-                        pet.name
-                    )
-                    prefs.lastLongingNotificationTimestamp = now
-                    prefs.incrementDailyNotificationCount()
+                val longingNow = System.currentTimeMillis()
+                val elapsedSinceLastLonging = longingNow - prefs.lastLongingNotificationTimestamp
+                if (elapsedSinceLastLonging < 6 * 60 * 60 * 1000L) {
+                    Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=LONGING_COOLDOWN type=LONGING")
+                } else {
+                    trySendCare(
+                        prefs = prefs,
+                        enabled = prefs.isLongingEnabled,
+                        alreadyNotified = false,
+                        type = PetNotificationType.LONGING,
+                        petName = pet.name
+                    ) {
+                        prefs.lastLongingNotificationTimestamp = longingNow
+                    }
                 }
             }
 
-            // Re-schedule the next intelligent check
             PetCareScheduler.scheduleNextCheck(applicationContext)
-
             Result.success()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(tag, "worker failed: ${e.message}", e)
             Result.retry()
+        }
+    }
+
+    private fun trySendCare(
+        prefs: NotificationPreferences,
+        enabled: Boolean,
+        alreadyNotified: Boolean,
+        type: PetNotificationType,
+        petName: String,
+        onSent: () -> Unit
+    ) {
+        when {
+            !enabled ->
+                Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=TYPE_DISABLED type=${type.name}")
+            alreadyNotified ->
+                Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=ALREADY_NOTIFIED type=${type.name}")
+            !prefs.canSendCareNotificationToday() ->
+                Log.i("PET_NOTIFICATION_BLOCKED", "blocked reason=DAILY_LIMIT type=${type.name}")
+            else -> {
+                NotificationHelper.sendPetNotification(applicationContext, type, petName)
+                onSent()
+                prefs.incrementDailyNotificationCount()
+            }
         }
     }
 }
