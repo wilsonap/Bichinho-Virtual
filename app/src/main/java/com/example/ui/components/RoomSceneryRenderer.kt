@@ -13,7 +13,9 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import com.example.data.model.DayPeriod
 import com.example.data.model.HouseRoom
+import com.example.data.model.WeatherState
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -30,6 +32,8 @@ fun RoomSceneryRenderer(
     room: HouseRoom = HouseRoom.LIVING_ROOM,
     themeId: String = "decor_bedroom",
     isSleeping: Boolean = false,
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "scenery_ambient")
@@ -56,23 +60,65 @@ fun RoomSceneryRenderer(
         label = "scenery_pulse"
     )
 
+    val dim = OutdoorAmbience.dimInterior(dayPeriod, isSleeping)
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
 
         when (room) {
-            HouseRoom.LIVING_ROOM -> drawLivingRoomScene(w, h, ambientPhase, pulseProgress, isSleeping)
-            HouseRoom.KITCHEN -> drawKitchenScene(w, h, ambientPhase, pulseProgress, isSleeping)
-            HouseRoom.BATHROOM -> drawBathroomScene(w, h, ambientPhase, pulseProgress, isSleeping)
-            HouseRoom.BACKYARD -> drawBackyardScene(w, h, ambientPhase, pulseProgress, isSleeping)
-            HouseRoom.GARAGE -> drawGarageScene(w, h, ambientPhase, pulseProgress, isSleeping)
-            HouseRoom.SCHOOL -> drawSchoolScene(w, h, ambientPhase, pulseProgress, isSleeping)
+            HouseRoom.LIVING_ROOM -> {
+                // Luzes artificiais acesas à noite; só janela mostra o exterior
+                drawLivingRoomScene(
+                    w, h, ambientPhase, pulseProgress,
+                    isSleeping = false,
+                    dayPeriod, weather
+                )
+            }
+            HouseRoom.KITCHEN -> drawKitchenScene(
+                w, h, ambientPhase, pulseProgress,
+                isSleeping = false,
+                dayPeriod, weather
+            )
+            HouseRoom.BATHROOM -> drawBathroomScene(
+                w, h, ambientPhase, pulseProgress,
+                isSleeping = false,
+                dayPeriod, weather
+            )
+            HouseRoom.BACKYARD -> drawBackyardScene(
+                w, h, ambientPhase, pulseProgress,
+                isSleeping = IndoorLighting.outdoorSceneDark(dayPeriod),
+                dayPeriod, weather
+            )
+            HouseRoom.GARAGE -> drawGarageScene(
+                w, h, ambientPhase, pulseProgress,
+                isSleeping = false,
+                dayPeriod, weather
+            )
+            HouseRoom.SCHOOL -> drawSchoolScene(
+                w, h, ambientPhase, pulseProgress,
+                isSleeping = isSleeping,
+                dayPeriod, weather
+            )
             HouseRoom.BEDROOM -> {
+                val sleepPalette = IndoorLighting.useDarkSleepPalette(HouseRoom.BEDROOM, isSleeping)
                 when (themeId) {
-                    "decor_forest" -> drawMagicForestScene(w, h, ambientPhase, pulseProgress, isSleeping)
-                    "decor_beach" -> drawTropicalBeachScene(w, h, ambientPhase, pulseProgress, isSleeping)
-                    "decor_space" -> drawOuterSpaceScene(w, h, ambientPhase, pulseProgress, isSleeping)
-                    else -> drawCozyBedroomScene(w, h, ambientPhase, pulseProgress, isSleeping)
+                    "decor_forest" -> drawMagicForestScene(
+                        w, h, ambientPhase, pulseProgress,
+                        IndoorLighting.useDarkSleepPaletteForDecor(isSleeping)
+                    )
+                    "decor_beach" -> drawTropicalBeachScene(
+                        w, h, ambientPhase, pulseProgress,
+                        IndoorLighting.useDarkSleepPaletteForDecor(isSleeping)
+                    )
+                    "decor_space" -> drawOuterSpaceScene(
+                        w, h, ambientPhase, pulseProgress,
+                        IndoorLighting.useDarkSleepPaletteForDecor(isSleeping)
+                    )
+                    else -> drawCozyBedroomScene(
+                        w, h, ambientPhase, pulseProgress,
+                        sleepPalette, dayPeriod, weather
+                    )
                 }
             }
         }
@@ -87,7 +133,9 @@ private fun DrawScope.drawCozyBedroomScene(
     h: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR
 ) {
     // 1. Linha de piso visual bem delineada (70% da altura para ancorar perfeitamente o bichinho e móveis)
     val floorY = h * 0.70f
@@ -204,81 +252,9 @@ private fun DrawScope.drawCozyBedroomScene(
         cornerRadius = CornerRadius(3f, 3f)
     )
 
-    // Vidro da janela e Paisagem Externa
-    val skyBrush = if (isSleeping) {
-        Brush.verticalGradient(listOf(Color(0xFF020617), Color(0xFF0F172A), Color(0xFF1E293B)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF93C5FD), Color(0xFFFEF3C7)))
-    }
-    drawRoundRect(
-        brush = skyBrush,
-        topLeft = Offset(winX, winY),
-        size = Size(winW, winH),
-        cornerRadius = CornerRadius(4f, 4f)
-    )
-
-    // Elementos do Céu dentro da janela
-    if (isSleeping) {
-        // Céu Noturno: Estrelas cintilantes
-        val starAlpha1 = 0.5f + (pulse * 0.5f)
-        val starAlpha2 = 0.9f - (pulse * 0.4f)
-        drawCircle(Color.White.copy(alpha = starAlpha1), radius = 2f, center = Offset(winX + winW * 0.20f, winY + winH * 0.22f))
-        drawCircle(Color(0xFFFEF08A).copy(alpha = starAlpha2), radius = 2.5f, center = Offset(winX + winW * 0.45f, winY + winH * 0.15f))
-        drawCircle(Color.White.copy(alpha = starAlpha1), radius = 1.8f, center = Offset(winX + winW * 0.82f, winY + winH * 0.28f))
-        drawCircle(Color.White.copy(alpha = starAlpha2), radius = 2f, center = Offset(winX + winW * 0.28f, winY + winH * 0.48f))
-        drawCircle(Color(0xFFBAE6FD).copy(alpha = starAlpha1), radius = 1.5f, center = Offset(winX + winW * 0.60f, winY + winH * 0.40f))
-
-        // Lua Crescente brilhante com halo
-        val moonX = winX + winW * 0.70f
-        val moonY = winY + winH * 0.32f
-        val moonR = winW * 0.18f
-        // Halo suave
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(Color(0xFFFEF08A).copy(alpha = 0.25f), Color.Transparent),
-                center = Offset(moonX, moonY),
-                radius = moonR * 2.2f
-            ),
-            radius = moonR * 2.2f,
-            center = Offset(moonX, moonY)
-        )
-        // Lua
-        drawCircle(Color(0xFFFEF08A), radius = moonR, center = Offset(moonX, moonY))
-        drawCircle(Color(0xFF0F172A), radius = moonR * 0.85f, center = Offset(moonX - moonR * 0.35f, moonY - moonR * 0.15f))
-    } else {
-        // Céu Diurno: Colinas verdes ao fundo
-        val hillPath = Path().apply {
-            moveTo(winX, winY + winH)
-            lineTo(winX, winY + winH * 0.70f)
-            quadraticTo(winX + winW * 0.45f, winY + winH * 0.55f, winX + winW, winY + winH * 0.68f)
-            lineTo(winX + winW, winY + winH)
-            close()
-        }
-        drawPath(hillPath, color = Color(0xFF4ADE80))
-
-        // Sol radiante com corona
-        val sunX = winX + winW * 0.74f
-        val sunY = winY + winH * 0.30f
-        val sunR = winW * 0.18f
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(Color(0xFFFDE047).copy(alpha = 0.4f), Color.Transparent),
-                center = Offset(sunX, sunY),
-                radius = sunR * 1.8f
-            ),
-            radius = sunR * 1.8f,
-            center = Offset(sunX, sunY)
-        )
-        drawCircle(Color(0xFFFBBF24), radius = sunR, center = Offset(sunX, sunY))
-        drawCircle(Color(0xFFFDE047), radius = sunR * 0.75f, center = Offset(sunX - 2f, sunY - 2f))
-
-        // Nuvens fofinhas animadas flutuando suavemente
-        val cloudShift = (phase * 16f) % (winW * 0.5f)
-        val cloudX = winX + winW * 0.18f + cloudShift
-        val cloudY = winY + winH * 0.38f
-        drawCircle(Color.White.copy(alpha = 0.90f), radius = winW * 0.10f, center = Offset(cloudX, cloudY))
-        drawCircle(Color.White.copy(alpha = 0.90f), radius = winW * 0.13f, center = Offset(cloudX + winW * 0.10f, cloudY - 3f))
-        drawCircle(Color.White.copy(alpha = 0.90f), radius = winW * 0.09f, center = Offset(cloudX + winW * 0.20f, cloudY + 1f))
+    // Vidro da janela e Paisagem Externa (período + clima)
+    with(OutdoorAmbience) {
+        drawWindowExterior(winX, winY, winW, winH, dayPeriod, weather, phase, pulse)
     }
 
     // Travessas da janela (4 painéis)
@@ -867,11 +843,9 @@ private fun DrawScope.drawCozyBedroomScene(
         center = Offset(lampX, lampTopY + 8f)
     )
 
-    // ---------------------------------------------------------------------------------------------
-    // ILUMINAÇÃO NOTURNA GERAL (Quando isSleeping == true)
-    // ---------------------------------------------------------------------------------------------
+    // ILUMINAÇÃO: sono ≠ noite visual
+    // Só o sono apaga/reduz a luz do quarto; à noite acordado as lâmpadas ficam acesas.
     if (isSleeping) {
-        // Suave vinheta azulada noturna no quarto, mantendo o aconchego
         drawRect(
             brush = Brush.verticalGradient(
                 listOf(Color(0x22020617), Color(0x350F172A), Color(0x450F172A)),
@@ -880,6 +854,12 @@ private fun DrawScope.drawCozyBedroomScene(
             ),
             topLeft = Offset(0f, 0f),
             size = Size(w, h)
+        )
+    }
+    with(OutdoorAmbience) {
+        drawIndoorWarmOverlay(
+            w, h, dayPeriod, weather,
+            apply = IndoorLighting.shouldApplyWarmGlow(HouseRoom.BEDROOM, dayPeriod, isSleeping)
         )
     }
 }

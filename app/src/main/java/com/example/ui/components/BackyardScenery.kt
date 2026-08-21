@@ -8,28 +8,40 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import com.example.data.model.DayPeriod
+import com.example.data.model.WeatherState
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Quintal redesenhado (Tamagotchi 2D rico).
+ * Quintal Tamagotchi 2D rico (layout fixo).
  * Esquerda: árvore + balanço · Centro livre · Direita: banco, flores, arbustos.
- * Apenas visual — sem alterar mecânicas, brincadeiras ou posição do pet.
+ *
+ * DayPeriod / WeatherState entram só como camadas de céu, luz e clima —
+ * sem redesenhar cerca, gramado, móveis ou posição do pet.
  */
 fun DrawScope.drawBackyardScene(
     w: Float,
     h: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR
 ) {
     // Horizonte alinhado ao gramado onde o pet fica (~70% no stage)
     val horizonY = h * 0.58f
     val leftW = w * 0.32f
     val rightX = w * 0.68f
+    val theme = OutdoorAmbience.theme(dayPeriod, weather)
 
-    drawBackyardSky(w, horizonY, phase, pulse, isSleeping)
-    drawBackyardClouds(w, horizonY, phase, isSleeping)
+    // --- DayLightingLayer (céu / sol / lua / estrelas) ---
+    drawBackyardDayLighting(w, horizonY, phase, pulse, dayPeriod, theme)
+
+    // --- WeatherLayer (nuvens) ---
+    drawBackyardClouds(w, horizonY, phase, theme)
+
+    // --- QuintalBase (inalterado vs. design pré–ciclo de tempo) ---
     drawBackyardFence(w, horizonY, isSleeping)
     drawBackyardGrass(w, h, horizonY, isSleeping)
     drawBackyardStonePath(w, h, horizonY, leftW, rightX, isSleeping)
@@ -37,45 +49,63 @@ fun DrawScope.drawBackyardScene(
     drawBackyardLeftTreeAndSwing(leftW, horizonY, h, phase, isSleeping)
     drawBackyardRightGarden(w, rightX, horizonY, h, phase, isSleeping)
     drawBackyardPond(w, leftW, horizonY, h, phase, isSleeping)
-    drawBackyardButterflies(w, horizonY, phase, isSleeping)
+
+    val showButterflies =
+        !isSleeping &&
+            !theme.showRain &&
+            dayPeriod != DayPeriod.NIGHT &&
+            weather == WeatherState.CLEAR
+    if (showButterflies) {
+        drawBackyardButterflies(w, horizonY, phase, isSleeping = false)
+    }
+
+    // --- WeatherLayer (chuva + poças leves) + escurecimento ambiente ---
+    drawBackyardWeatherOverlay(w, h, horizonY, phase, theme)
 }
 
 // -------------------------------------------------------------------------------------------------
-private fun DrawScope.drawBackyardSky(
+/** Camada de iluminação do dia: só céu e astros; posições alinhadas ao céu original. */
+private fun DrawScope.drawBackyardDayLighting(
     w: Float,
     horizonY: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    dayPeriod: DayPeriod,
+    theme: OutdoorAmbience.Theme
 ) {
-    val sky = if (isSleeping) {
-        Brush.verticalGradient(
-            listOf(Color(0xFF020617), Color(0xFF0F172A), Color(0xFF1E3A8A)),
-            startY = 0f,
-            endY = horizonY
-        )
-    } else {
-        Brush.verticalGradient(
-            listOf(Color(0xFF38BDF8), Color(0xFF7DD3FC), Color(0xFFBAE6FD), Color(0xFFFEF3C7)),
-            startY = 0f,
-            endY = horizonY
-        )
-    }
-    drawRect(brush = sky, topLeft = Offset.Zero, size = Size(w, horizonY))
+    drawRect(
+        brush = Brush.verticalGradient(theme.skyColors, startY = 0f, endY = horizonY),
+        topLeft = Offset.Zero,
+        size = Size(w, horizonY)
+    )
 
-    if (isSleeping) {
-        drawCircle(Color(0xFFFEF08A), 15f, Offset(w * 0.82f, horizonY * 0.28f))
-        // Estrelas
+    if (theme.showStars) {
         for (i in 0..8) {
             val sx = w * (0.08f + (i * 0.1f) % 0.75f)
             val sy = horizonY * (0.12f + (i % 4) * 0.12f)
             drawCircle(Color.White.copy(alpha = 0.4f + pulse * 0.4f), 1.6f, Offset(sx, sy))
         }
-    } else {
+    }
+
+    if (theme.showMoon) {
+        // Mesma âncora da lua original do quintal
+        drawCircle(Color(0xFFFEF08A), 15f, Offset(w * 0.82f, horizonY * 0.28f))
+        drawCircle(
+            Color(0xFF0F172A).copy(alpha = 0.55f),
+            12f,
+            Offset(w * 0.82f - 5f, horizonY * 0.28f - 2f)
+        )
+    }
+
+    if (theme.showSun) {
         val sunPulse = (sin(phase * 2f) + 1f) / 2f
-        val sunC = Offset(w * 0.84f, horizonY * 0.26f)
+        // Original: alto à direita; entardecer/manhã: um pouco mais baixo no horizonte
+        val sunY = if (theme.sunLow) horizonY * 0.42f else horizonY * 0.26f
+        val sunC = Offset(w * 0.84f, sunY)
+        val sunColor =
+            if (dayPeriod == DayPeriod.EVENING) Color(0xFFFB923C) else Color(0xFFFBBF24)
         drawCircle(Color(0xFFFDE047).copy(alpha = 0.25f + 0.2f * sunPulse), 30f, sunC)
-        drawCircle(Color(0xFFFBBF24), 18f, sunC)
+        drawCircle(sunColor, 18f, sunC)
     }
 }
 
@@ -83,23 +113,77 @@ private fun DrawScope.drawBackyardClouds(
     w: Float,
     horizonY: Float,
     phase: Float,
-    isSleeping: Boolean
+    theme: OutdoorAmbience.Theme
 ) {
-    if (isSleeping) return
-    val alpha = 0.88f
-    // Nuvem 1 — drift lento
+    if (!theme.showClouds) return
+    val alpha = if (theme.showRain) 0.72f else 0.88f
+    val gray = theme.showRain || (!theme.showSun && !theme.showMoon)
+    // Nuvem 1 — drift lento (mesmas trajetórias do cenário original)
     val c1x = ((phase * 10f) % (w + 80f)) - 40f
-    drawCloud(c1x, horizonY * 0.22f, 1f, alpha)
-    // Nuvem 2 — mais lenta / menor
+    drawCloud(c1x, horizonY * 0.22f, 1f, alpha, gray)
     val c2x = ((phase * 6f + w * 0.4f) % (w + 60f)) - 30f
-    drawCloud(c2x, horizonY * 0.38f, 0.75f, alpha * 0.85f)
-    // Nuvem 3
+    drawCloud(c2x, horizonY * 0.38f, 0.75f, alpha * 0.85f, gray)
     val c3x = ((phase * 8f + w * 0.7f) % (w + 70f)) - 35f
-    drawCloud(c3x, horizonY * 0.15f, 0.9f, alpha * 0.9f)
+    drawCloud(c3x, horizonY * 0.15f, 0.9f, alpha * 0.9f, gray)
+    if (theme.showRain) {
+        val c4x = ((phase * 12f + w * 0.2f) % (w + 90f)) - 45f
+        drawCloud(c4x, horizonY * 0.30f, 1.15f, alpha * 0.8f, gray = true)
+    }
 }
 
-private fun DrawScope.drawCloud(cx: Float, cy: Float, scale: Float, alpha: Float) {
-    val c = Color.White.copy(alpha = alpha)
+/** Chuva, poças leves e vinheta de luminosidade — não move móveis. */
+private fun DrawScope.drawBackyardWeatherOverlay(
+    w: Float,
+    h: Float,
+    horizonY: Float,
+    phase: Float,
+    theme: OutdoorAmbience.Theme
+) {
+    if (theme.showRain) {
+        for (i in 0..28) {
+            val rx = w * ((i * 0.037f + phase * 0.08f) % 1f)
+            val ry = (horizonY * 0.05f) + (h * 0.85f) * ((i * 0.11f + phase * 0.25f) % 1f)
+            drawLine(
+                Color(0xFFBAE6FD).copy(alpha = 0.55f),
+                Offset(rx, ry),
+                Offset(rx + 2.5f, ry + 14f),
+                strokeWidth = 1.6f
+            )
+        }
+        // Poças pequenas no gramado (decorativas, sem alterar layout)
+        drawOval(
+            Color(0xFF0369A1).copy(alpha = 0.28f),
+            Offset(w * 0.48f, h * 0.82f),
+            Size(28f, 8f)
+        )
+        drawOval(
+            Color(0xFF0369A1).copy(alpha = 0.22f),
+            Offset(w * 0.62f, h * 0.88f),
+            Size(18f, 6f)
+        )
+    }
+
+    if (theme.outdoorDim > 0.01f) {
+        drawRect(
+            color = Color.Black.copy(alpha = theme.outdoorDim),
+            topLeft = Offset.Zero,
+            size = Size(w, h)
+        )
+    }
+}
+
+private fun DrawScope.drawCloud(
+    cx: Float,
+    cy: Float,
+    scale: Float,
+    alpha: Float,
+    gray: Boolean = false
+) {
+    val c = if (gray) {
+        Color(0xFF94A3B8).copy(alpha = alpha)
+    } else {
+        Color.White.copy(alpha = alpha)
+    }
     drawCircle(c, 12f * scale, Offset(cx, cy))
     drawCircle(c, 16f * scale, Offset(cx + 14f * scale, cy - 4f * scale))
     drawCircle(c, 13f * scale, Offset(cx + 28f * scale, cy))

@@ -1,0 +1,44 @@
+﻿./gradlew : e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing
+/FishingGameEngine.kt:127:34 Cannot infer type for this parameter. Specify it explicitly.
+No C:\Users\Alessandro\AppData\Local\Temp\ps-script-07443f57-3056-4c7e-b7da-1efbbf63ccfa.ps1:83 caractere:1
++ ./gradlew :app:compileDebugKotlin --quiet 2>&1 | Out-File -FilePath c ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (e: file:///C:/U... it explicitly.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing/FishingGame
+Engine.kt:127:34 Not enough information to infer type argument for 'E'.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing/FishingGame
+Engine.kt:127:47 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing/FishingGame
+Engine.kt:127:47 Not enough information to infer type argument for 'T'.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing/FishingGame
+Engine.kt:127:52 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing/FishingGame
+Engine.kt:134:25 Argument type mismatch: actual type is 'Unit', but 'Function1<FishingGameEvent, Unit>' was expected.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing/FishingGame
+Engine.kt:134:25 Function invocation 'emit(...)' expected.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing/FishingGame
+Engine.kt:155:31 Argument type mismatch: actual type is 'Unit', but 'Function1<FishingGameEvent, Unit>' was expected.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/game/fishing/FishingGame
+Engine.kt:155:31 Function invocation 'emit(...)' expected.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/ui/screens/FishingMiniga
+meScreen.kt:338:36 No parameter with name 'Modifier' found.
+e: file:///C:/Users/Alessandro/Documents/GitHub/Bichinho-Virtual/app/src/main/java/com/example/ui/screens/FishingMiniga
+meScreen.kt:338:36 No value passed for parameter 'modifier'.
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing 
+org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 27s

@@ -14,7 +14,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -24,6 +27,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ui.components.EvolutionDialog
 import com.example.ui.screens.*
 import com.example.ui.viewmodel.PetViewModel
+import kotlinx.coroutines.launch
 
 sealed class Screen(val route: String, val title: String, val icon: @Composable (Boolean) -> Unit) {
     data object Home : Screen("home", "Bichinho", { isSelected ->
@@ -55,6 +59,8 @@ sealed class Screen(val route: String, val title: String, val icon: @Composable 
     data object MemoryGame : Screen("game_memory", "Memória", {})
     data object RunnerGame : Screen("game_runner", "Corrida", {})
     data object CatchGame : Screen("game_catch", "Captura", {})
+    data object FishingGame : Screen("game_fishing", "Pescaria", {})
+    data object FootstepsGame : Screen("game_footsteps", "Pegadas", {})
 }
 
 @Composable
@@ -88,6 +94,14 @@ fun MainApp(
 
     val toastMsg by viewModel.toastMessage.collectAsStateWithLifecycle()
     val evolutionStage by viewModel.evolutionCelebration.collectAsStateWithLifecycle()
+    val gameTime by viewModel.gameTimeSnapshot.collectAsStateWithLifecycle()
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.onAppForegrounded()
+        }
+    }
 
     val audioManager = remember { com.example.audio.GameAudioManager.getInstance(context) }
 
@@ -100,7 +114,13 @@ fun MainApp(
     // Screen-based BGM management
     LaunchedEffect(currentRoute, pet?.isHatched) {
         when {
-            currentRoute in listOf(Screen.MemoryGame.route, Screen.RunnerGame.route, Screen.CatchGame.route) -> {
+            currentRoute in listOf(
+                Screen.MemoryGame.route,
+                Screen.RunnerGame.route,
+                Screen.CatchGame.route,
+                Screen.FishingGame.route,
+                Screen.FootstepsGame.route
+            ) -> {
                 audioManager.playBgm(com.example.audio.BgmTrack.MINIGAME)
             }
             currentRoute == Screen.Shop.route -> {
@@ -145,7 +165,9 @@ fun MainApp(
     val isPlayingGame = currentRoute in listOf(
         Screen.MemoryGame.route,
         Screen.RunnerGame.route,
-        Screen.CatchGame.route
+        Screen.CatchGame.route,
+        Screen.FishingGame.route,
+        Screen.FootstepsGame.route
     )
 
     Scaffold(
@@ -230,6 +252,9 @@ fun MainApp(
                         onPlay = { item -> viewModel.playWithToy(item) },
                         onDoctor = { payWithCoins -> viewModel.doctorCheckup(payWithCoins) },
                         onSchool = { viewModel.sendToSchool() },
+                        dayPeriod = gameTime.period,
+                        weather = gameTime.weather,
+                        onStatusMessage = { viewModel.showStatusMessage(it) },
                         onOpenMinigames = {
                             pendingLivingRoomAfterMinigames = true
                             navController.navigate(Screen.Minigames.route)
@@ -258,6 +283,8 @@ fun MainApp(
                             "memory" -> navController.navigate(Screen.MemoryGame.route)
                             "runner" -> navController.navigate(Screen.RunnerGame.route)
                             "catch" -> navController.navigate(Screen.CatchGame.route)
+                            "fishing" -> navController.navigate(Screen.FishingGame.route)
+                            "footsteps" -> navController.navigate(Screen.FootstepsGame.route)
                         }
                     }
                 )
@@ -368,6 +395,32 @@ fun MainApp(
                     onBack = { navController.popBackStack() },
                     onFinishGame = { score, coins ->
                         viewModel.recordMinigameScore("catch", score, coins)
+                    }
+                )
+            }
+
+            composable(Screen.FishingGame.route) {
+                FishingMinigameScreen(
+                    pet = pet,
+                    dayPeriod = gameTime.period,
+                    weather = gameTime.weather,
+                    previousHighscore = stats?.fishingHighscore ?: 0,
+                    onBack = { navController.popBackStack() },
+                    onFinishGame = { score, coins ->
+                        viewModel.recordMinigameScore("fishing", score, coins)
+                    }
+                )
+            }
+
+            composable(Screen.FootstepsGame.route) {
+                FootstepsMinigameScreen(
+                    pet = pet,
+                    dayPeriod = gameTime.period,
+                    weather = gameTime.weather,
+                    previousHighscore = stats?.footstepsHighscore ?: 0,
+                    onBack = { navController.popBackStack() },
+                    onFinishGame = { score, coins ->
+                        viewModel.recordMinigameScore("footsteps", score, coins)
                     }
                 )
             }

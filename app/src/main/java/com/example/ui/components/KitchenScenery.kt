@@ -7,6 +7,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import com.example.data.model.DayPeriod
+import com.example.data.model.HouseRoom
+import com.example.data.model.WeatherState
 import kotlin.math.sin
 
 /**
@@ -22,7 +25,9 @@ fun DrawScope.drawKitchenScene(
     h: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR
 ) {
     val floorY = h * 0.70f
     val leftW = w * 0.30f
@@ -33,12 +38,18 @@ fun DrawScope.drawKitchenScene(
     drawKitchenCeramicFloor(w, h, floorY, isSleeping)
 
     // Camada 2 — janela (canto superior esquerdo; fora da faixa do balão central)
-    drawKitchenWindow(w, floorY, phase, pulse, isSleeping)
+    drawKitchenWindow(w, floorY, phase, pulse, isSleeping, dayPeriod, weather)
 
     // Camada 3 — móveis e objetos (esquerda / direita; centro livre)
     drawKitchenLeftFurniture(leftW, floorY, phase, isSleeping)
     drawKitchenRightFurniture(w, rightX, floorY, phase, isSleeping)
     drawKitchenSideFloorDetails(w, leftW, rightX, floorY, isSleeping)
+    with(OutdoorAmbience) {
+        drawIndoorWarmOverlay(
+            w, h, dayPeriod, weather,
+            apply = IndoorLighting.shouldApplyWarmGlow(HouseRoom.KITCHEN, dayPeriod, isSleeping)
+        )
+    }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -158,7 +169,9 @@ private fun DrawScope.drawKitchenWindow(
     floorY: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod,
+    weather: WeatherState
 ) {
     // Canto superior esquerdo — acima da pia (à direita da geladeira), fora do balão central
     val winW = (w * 0.16f).coerceIn(52f, 88f)
@@ -184,37 +197,8 @@ private fun DrawScope.drawKitchenWindow(
         cornerRadius = CornerRadius(8f, 8f)
     )
 
-    val sky = if (isSleeping) {
-        Brush.verticalGradient(listOf(Color(0xFF020617), Color(0xFF1E293B), Color(0xFF312E81)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF7DD3FC), Color(0xFFFEF9C3)))
-    }
-    drawRoundRect(
-        brush = sky,
-        topLeft = Offset(winX, winY),
-        size = Size(winW, winH),
-        cornerRadius = CornerRadius(5f, 5f)
-    )
-
-    // Sol / luar
-    if (!isSleeping) {
-        val sunPulse = 5f + pulse * 1.5f
-        drawCircle(
-            color = Color(0xFFFDE047).copy(alpha = 0.9f),
-            radius = sunPulse,
-            center = Offset(winX + winW * 0.72f, winY + winH * 0.28f)
-        )
-        drawCircle(
-            color = Color(0xFFFFFBEB).copy(alpha = 0.35f),
-            radius = sunPulse + 6f,
-            center = Offset(winX + winW * 0.72f, winY + winH * 0.28f)
-        )
-    } else {
-        drawCircle(
-            color = Color(0xFFE2E8F0).copy(alpha = 0.7f),
-            radius = 4f,
-            center = Offset(winX + winW * 0.7f, winY + winH * 0.25f)
-        )
+    with(OutdoorAmbience) {
+        drawWindowExterior(winX, winY, winW, winH, dayPeriod, weather, phase, pulse)
     }
 
     // Divisórias
@@ -239,7 +223,7 @@ private fun DrawScope.drawKitchenWindow(
     )
 
     // Feixe de luz na zona esquerda (não invade o centro do pet)
-    if (!isSleeping) {
+    if (!isSleeping && dayPeriod != DayPeriod.NIGHT && weather != WeatherState.RAIN) {
         val lightAlpha = 0.07f + pulse * 0.03f
         drawRect(
             brush = Brush.verticalGradient(

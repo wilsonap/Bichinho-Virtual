@@ -13,6 +13,7 @@ import com.example.notification.PetCareScheduler
 import com.example.notification.PetNotificationType
 import com.example.notification.PetStatsCalculator
 import com.example.data.repository.PetRepository
+import com.example.time.GameTimeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -31,6 +32,9 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     val dailyMissionsState: StateFlow<List<DailyMissionEntity>>
     val achievementsState: StateFlow<List<AchievementEntity>>
     val gameStatsState: StateFlow<GameStatsEntity?>
+
+    /** Período do dia + clima visual (fonte: GameTimeManager). */
+    val gameTimeSnapshot: StateFlow<GameTimeManager.Snapshot> = GameTimeManager.snapshot
 
     // Audio settings states
     val isMusicEnabled: StateFlow<Boolean> = audioManager.isMusicEnabled
@@ -195,6 +199,25 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
         // Start continuous state machine & animation loop
         startAutonomousLoop()
         startPeriodicLiveStatTick()
+        startGameTimePeriodLoop()
+    }
+
+    /** Atualiza período do dia só nas fronteiras (e no máximo a cada 60s). */
+    private fun startGameTimePeriodLoop() {
+        viewModelScope.launch {
+            GameTimeManager.forceRefresh()
+            while (true) {
+                val wait = GameTimeManager.millisUntilNextPeriodChange()
+                    .coerceIn(1_000L, 60_000L)
+                delay(wait)
+                GameTimeManager.refresh()
+            }
+        }
+    }
+
+    /** Chamado ao voltar do background / retomar Activity. */
+    fun onAppForegrounded() {
+        GameTimeManager.forceRefresh()
     }
 
     private fun triggerLongingGreeting(pet: PetEntity) {
@@ -800,8 +823,13 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playWithToy(toy: ShopItem? = null) {
-        audioManager.playSfx(SoundEffect.PLAY)
         viewModelScope.launch {
+            val pet = petState.value ?: return@launch
+            if (pet.isSleeping || PetStatsCalculator.isNightTime()) {
+                _toastMessage.value = "🌙 Está muito tarde para brincar lá fora."
+                return@launch
+            }
+            audioManager.playSfx(SoundEffect.PLAY)
             val speechText = when (toy?.id) {
                 "toy_ball" -> "Olha a bola quicando! Pega, corre! ⚽✨"
                 "toy_duck" -> "Quack quack! O patinho de borracha faz barulhinho! 🦆🎵"
@@ -1024,6 +1052,10 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearToast() {
         _toastMessage.value = null
+    }
+
+    fun showStatusMessage(message: String) {
+        _toastMessage.value = message
     }
 
     fun resetPet() {

@@ -105,6 +105,8 @@ data class GameStatsEntity(
     val memoryHighscore: Int = 0,
     val runnerHighscore: Int = 0,
     val catchHighscore: Int = 0,
+    val fishingHighscore: Int = 0,
+    val footstepsHighscore: Int = 0,
     val totalCoinsEarned: Int = 0,
     val totalItemsBought: Int = 0,
     val evolutionsCount: Int = 0

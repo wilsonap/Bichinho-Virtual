@@ -382,6 +382,8 @@ fun StatsScreen(
                         StatRow(label = "Recorde Jogo da Memória", value = "${stats?.memoryHighscore ?: 0} pts")
                         StatRow(label = "Recorde Corrida", value = "${stats?.runnerHighscore ?: 0} m")
                         StatRow(label = "Recorde Captura de Objetos", value = "${stats?.catchHighscore ?: 0} pts")
+                        StatRow(label = "Recorde Pescaria", value = "${stats?.fishingHighscore ?: 0} pts")
+                        StatRow(label = "Recorde Siga as Pegadas", value = "${stats?.footstepsHighscore ?: 0} pts")
                         StatRow(label = "Total de Moedas Acumuladas", value = "🪙 ${stats?.totalCoinsEarned ?: 0}")
                         StatRow(label = "Itens Comprados na Loja", value = "${stats?.totalItemsBought ?: 0}")
                     }

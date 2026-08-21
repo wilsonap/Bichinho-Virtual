@@ -8,6 +8,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import com.example.data.model.DayPeriod
+import com.example.data.model.HouseRoom
+import com.example.data.model.WeatherState
 import kotlin.math.sin
 
 /**
@@ -22,7 +25,9 @@ fun DrawScope.drawBathroomScene(
     h: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR
 ) {
     val floorY = h * 0.70f
     val leftW = w * 0.32f
@@ -36,7 +41,13 @@ fun DrawScope.drawBathroomScene(
     drawBathroomCenterDetails(w, leftW, rightX, floorY, isSleeping)
 
     // Janela por último no Canvas para ficar sempre visível (acima de azulejos/chuveiro)
-    drawBathroomVentWindow(w, floorY, phase, pulse, isSleeping)
+    drawBathroomVentWindow(w, floorY, phase, pulse, isSleeping, dayPeriod, weather)
+    with(OutdoorAmbience) {
+        drawIndoorWarmOverlay(
+            w, h, dayPeriod, weather,
+            apply = IndoorLighting.shouldApplyWarmGlow(HouseRoom.BATHROOM, dayPeriod, isSleeping)
+        )
+    }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -157,7 +168,9 @@ private fun DrawScope.drawBathroomVentWindow(
     floorY: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod,
+    weather: WeatherState
 ) {
     // Janela de ventilação no canto superior esquerdo (visível; fora do pill/balão e da coluna do chuveiro)
     val winW = (w * 0.20f).coerceIn(64f, 108f)
@@ -179,32 +192,8 @@ private fun DrawScope.drawBathroomVentWindow(
         cornerRadius = CornerRadius(8f, 8f)
     )
 
-    val sky = if (isSleeping) {
-        Brush.verticalGradient(listOf(Color(0xFF020617), Color(0xFF1E293B), Color(0xFF312E81)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF7DD3FC), Color(0xFFE0F2FE)))
-    }
-    drawRoundRect(
-        brush = sky,
-        topLeft = Offset(winX, winY),
-        size = Size(winW, winH),
-        cornerRadius = CornerRadius(5f, 5f)
-    )
-
-    // Sol / luar
-    if (!isSleeping) {
-        val sunR = 5f + pulse * 1.5f
-        drawCircle(
-            Color(0xFFFDE047).copy(alpha = 0.9f),
-            sunR,
-            Offset(winX + winW * 0.72f, winY + winH * 0.28f)
-        )
-    } else {
-        drawCircle(
-            Color(0xFFE2E8F0).copy(alpha = 0.75f),
-            4f,
-            Offset(winX + winW * 0.7f, winY + winH * 0.28f)
-        )
+    with(OutdoorAmbience) {
+        drawWindowExterior(winX, winY, winW, winH, dayPeriod, weather, phase, pulse)
     }
 
     // Divisórias (cruz)

@@ -8,6 +8,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import com.example.data.model.DayPeriod
+import com.example.data.model.WeatherState
 import kotlin.math.sin
 
 /**
@@ -18,20 +20,40 @@ fun DrawScope.drawSchoolScene(
     h: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR
 ) {
     val floorY = h * 0.68f
+    // Escola: não escurece pelo DayPeriod.NIGHT — janela mostra o exterior
+    val dim = isSleeping
 
     // Parede bege/sala
     drawRect(
         brush = Brush.verticalGradient(
-            listOf(Color(0xFFFFF7ED), Color(0xFFFDE68A), Color(0xFFFCD34D)),
+            if (dim) listOf(Color(0xFF1E293B), Color(0xFF334155), Color(0xFF475569))
+            else listOf(Color(0xFFFFF7ED), Color(0xFFFDE68A), Color(0xFFFCD34D)),
             startY = 0f,
             endY = floorY
         ),
         topLeft = Offset(0f, 0f),
         size = Size(w, floorY)
     )
+
+    // Janela lateral da escola
+    val sWinW = (w * 0.18f).coerceIn(55f, 90f)
+    val sWinH = sWinW * 1.1f
+    val sWinX = w * 0.78f
+    val sWinY = h * 0.08f
+    drawRoundRect(
+        color = if (dim) Color(0xFF334155) else Color(0xFFFFFFFF),
+        topLeft = Offset(sWinX - 3f, sWinY - 3f),
+        size = Size(sWinW + 6f, sWinH + 6f),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+    with(OutdoorAmbience) {
+        drawWindowExterior(sWinX, sWinY, sWinW, sWinH, dayPeriod, weather, phase, pulse)
+    }
 
     // Piso madeira
     drawRect(
@@ -171,5 +193,11 @@ fun DrawScope.drawSchoolScene(
 
     if (isSleeping) {
         drawRect(Color(0x330F172A), Offset(0f, 0f), Size(w, h))
+    }
+    with(OutdoorAmbience) {
+        drawIndoorWarmOverlay(
+            w, h, dayPeriod, weather,
+            apply = !isSleeping && (dayPeriod == DayPeriod.EVENING || dayPeriod == DayPeriod.NIGHT)
+        )
     }
 }

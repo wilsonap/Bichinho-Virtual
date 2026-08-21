@@ -62,6 +62,9 @@ fun HomeScreen(
     onPlay: (ShopItem?) -> Unit,
     onDoctor: (Boolean) -> Unit,
     onSchool: () -> Unit = {},
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR,
+    onStatusMessage: (String) -> Unit = {},
     onOpenMinigames: () -> Unit,
     onOpenShop: () -> Unit,
     onOpenInventory: () -> Unit,
@@ -128,10 +131,18 @@ fun HomeScreen(
         showFeedDialog = true
     }
 
-    val openBackyardForPlay: () -> Unit = {
+    val openPlayRoom: () -> Unit = {
         temporaryRooms.cancelTimer()
-        temporaryRooms.goToWithoutTimer(HouseRoom.BACKYARD)
-        showToyDialog = true
+        when (val dest = PlayLocationRules.resolve(dayPeriod, weather, pet.isSleeping)) {
+            is PlayLocationRules.Destination.Blocked -> {
+                onStatusMessage(dest.message)
+            }
+            is PlayLocationRules.Destination.Go -> {
+                dest.message?.let(onStatusMessage)
+                temporaryRooms.goToWithoutTimer(dest.room)
+                showToyDialog = true
+            }
+        }
     }
 
     // Banheiro: manter implementação atual (funcional) — não migrar para TemporaryRoomSession
@@ -268,6 +279,8 @@ fun HomeScreen(
                         currentRoom = currentRoom,
                         autonomousState = autonomousState,
                         isBathing = isBathing,
+                        dayPeriod = dayPeriod,
+                        weather = weather,
                         onInteractWithPet = onInteractWithPet,
                         onWalkToPosition = onWalkToPosition,
                         onOpenMinigames = openGarageMinigames,
@@ -281,7 +294,7 @@ fun HomeScreen(
                         onFeedClick = openKitchenForFeed,
                         onBathe = batheInBathroom,
                         onToggleSleep = toggleSleepRoom,
-                        onPlay = openBackyardForPlay,
+                        onPlay = openPlayRoom,
                         onDoctorClick = { showDoctorDialog = true },
                         onSchoolClick = onSchool,
                         modifier = Modifier.fillMaxWidth()
@@ -347,6 +360,8 @@ fun HomeScreen(
                     currentRoom = currentRoom,
                     autonomousState = autonomousState,
                     isBathing = isBathing,
+                    dayPeriod = dayPeriod,
+                    weather = weather,
                     onInteractWithPet = onInteractWithPet,
                     onWalkToPosition = onWalkToPosition,
                     onOpenMinigames = openGarageMinigames,
@@ -369,7 +384,7 @@ fun HomeScreen(
                     onFeedClick = openKitchenForFeed,
                     onBathe = batheInBathroom,
                     onToggleSleep = toggleSleepRoom,
-                    onPlay = openBackyardForPlay,
+                    onPlay = openPlayRoom,
                     onDoctorClick = { showDoctorDialog = true },
                     onSchoolClick = onSchool,
                     modifier = Modifier.fillMaxWidth()
@@ -648,6 +663,8 @@ private fun PetLivingStage(
     currentRoom: HouseRoom,
     autonomousState: PetAutonomousState,
     isBathing: Boolean,
+    dayPeriod: DayPeriod,
+    weather: WeatherState,
     onInteractWithPet: () -> Unit,
     onWalkToPosition: (Float) -> Unit,
     onOpenMinigames: () -> Unit,
@@ -666,16 +683,18 @@ private fun PetLivingStage(
             .testTag("interactive_room_area"),
         contentAlignment = Alignment.Center
     ) {
-        // Thematic Room Scenery Layer (Rendered inside the living stage viewport)
+        // Thematic Room Scenery Layer — recomposição só quando room/theme/período/clima mudam
         androidx.compose.animation.Crossfade(
-            targetState = currentRoom to pet.roomTheme,
+            targetState = listOf(currentRoom, pet.roomTheme, dayPeriod, weather),
             animationSpec = tween(500, easing = FastOutSlowInEasing),
             label = "room_scenery_crossfade"
-        ) { (room, theme) ->
+        ) {
             RoomSceneryRenderer(
-                room = room,
-                themeId = theme,
+                room = currentRoom,
+                themeId = pet.roomTheme,
                 isSleeping = pet.isSleeping,
+                dayPeriod = dayPeriod,
+                weather = weather,
                 modifier = Modifier.fillMaxSize()
             )
         }

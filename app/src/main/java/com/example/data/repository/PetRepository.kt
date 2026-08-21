@@ -1057,13 +1057,17 @@ class PetRepository(private val dao: PetDao) {
         val newMem = if (gameType == "memory") max(stats.memoryHighscore, score) else stats.memoryHighscore
         val newRun = if (gameType == "runner") max(stats.runnerHighscore, score) else stats.runnerHighscore
         val newCat = if (gameType == "catch") max(stats.catchHighscore, score) else stats.catchHighscore
+        val newFish = if (gameType == "fishing") max(stats.fishingHighscore, score) else stats.fishingHighscore
+        val newSteps = if (gameType == "footsteps") max(stats.footstepsHighscore, score) else stats.footstepsHighscore
 
         dao.insertOrUpdateGameStats(
             stats.copy(
                 minigamesPlayed = stats.minigamesPlayed + 1,
                 memoryHighscore = newMem,
                 runnerHighscore = newRun,
-                catchHighscore = newCat
+                catchHighscore = newCat,
+                fishingHighscore = newFish,
+                footstepsHighscore = newSteps
             )
         )
 

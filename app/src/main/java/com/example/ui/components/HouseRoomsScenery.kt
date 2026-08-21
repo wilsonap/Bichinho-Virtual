@@ -7,6 +7,9 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import com.example.data.model.DayPeriod
+import com.example.data.model.HouseRoom
+import com.example.data.model.WeatherState
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -19,7 +22,9 @@ fun DrawScope.drawLivingRoomScene(
     h: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR
 ) {
     val floorY = h * 0.70f
 
@@ -72,17 +77,9 @@ fun DrawScope.drawLivingRoomScene(
         size = Size(winW + 8f, winH + 8f),
         cornerRadius = CornerRadius(6f, 6f)
     )
-    val skyBrush = if (isSleeping) {
-        Brush.verticalGradient(listOf(Color(0xFF020617), Color(0xFF1E293B)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFF60A5FA), Color(0xFF93C5FD), Color(0xFFFEF3C7)))
+    with(OutdoorAmbience) {
+        drawWindowExterior(winX, winY, winW, winH, dayPeriod, weather, phase, pulse)
     }
-    drawRoundRect(
-        brush = skyBrush,
-        topLeft = Offset(winX, winY),
-        size = Size(winW, winH),
-        cornerRadius = CornerRadius(4f, 4f)
-    )
     // Divisórias da janela
     drawLine(color = Color.White.copy(alpha = 0.7f), start = Offset(winX + winW / 2f, winY), end = Offset(winX + winW / 2f, winY + winH), strokeWidth = 2f)
     drawLine(color = Color.White.copy(alpha = 0.7f), start = Offset(winX, winY + winH / 2f), end = Offset(winX + winW, winY + winH / 2f), strokeWidth = 2f)
@@ -240,6 +237,14 @@ fun DrawScope.drawLivingRoomScene(
     drawRoundRect(color = Color(0xFF78350F), topLeft = Offset(tableX, tableY), size = Size(tableW, 6f), cornerRadius = CornerRadius(2f, 2f))
     drawLine(color = Color(0xFF451A03), start = Offset(tableX + 4f, tableY + 6f), end = Offset(tableX + 4f, tableY + tableH), strokeWidth = 2.5f)
     drawLine(color = Color(0xFF451A03), start = Offset(tableX + tableW - 4f, tableY + 6f), end = Offset(tableX + tableW - 4f, tableY + tableH), strokeWidth = 2.5f)
+
+    // Lâmpadas artificiais (noite/entardecer) — não escurece móveis
+    with(OutdoorAmbience) {
+        drawIndoorWarmOverlay(
+            w, h, dayPeriod, weather,
+            apply = IndoorLighting.shouldApplyWarmGlow(HouseRoom.LIVING_ROOM, dayPeriod, isSleeping)
+        )
+    }
 }
 
 // =================================================================================================
@@ -263,7 +268,9 @@ fun DrawScope.drawGarageScene(
     h: Float,
     phase: Float,
     pulse: Float,
-    isSleeping: Boolean
+    isSleeping: Boolean,
+    dayPeriod: DayPeriod = DayPeriod.AFTERNOON,
+    weather: WeatherState = WeatherState.CLEAR
 ) {
     val floorY = h * 0.70f
 
@@ -278,6 +285,21 @@ fun DrawScope.drawGarageScene(
         topLeft = Offset(0f, 0f),
         size = Size(w, floorY)
     )
+
+    // Janela alta da garagem
+    val gWinW = (w * 0.22f).coerceIn(70f, 110f)
+    val gWinH = gWinW * 0.7f
+    val gWinX = w * 0.06f
+    val gWinY = h * 0.08f
+    drawRoundRect(
+        color = if (isSleeping) Color(0xFF334155) else Color(0xFF94A3B8),
+        topLeft = Offset(gWinX - 3f, gWinY - 3f),
+        size = Size(gWinW + 6f, gWinH + 6f),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+    with(OutdoorAmbience) {
+        drawWindowExterior(gWinX, gWinY, gWinW, gWinH, dayPeriod, weather, phase, pulse)
+    }
 
     // Piso de Cimento Queimado / Epóxi
     val floorTop = if (isSleeping) Color(0xFF1E293B) else Color(0xFF64748B)
@@ -370,4 +392,12 @@ fun DrawScope.drawGarageScene(
     // Rodinhas de skate azuis
     drawCircle(Color(0xFF06B6D4), radius = 3.5f, center = Offset(skateX + 8f, skateY + 8f))
     drawCircle(Color(0xFF06B6D4), radius = 3.5f, center = Offset(skateX + skateW - 8f, skateY + 8f))
+
+    // Iluminação artificial da garagem
+    with(OutdoorAmbience) {
+        drawIndoorWarmOverlay(
+            w, h, dayPeriod, weather,
+            apply = IndoorLighting.shouldApplyWarmGlow(HouseRoom.GARAGE, dayPeriod, isSleeping)
+        )
+    }
 }
